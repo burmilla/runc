@@ -1,3 +1,4 @@
+//go:build linux
 // +build linux
 
 package libcontainer
@@ -14,9 +15,6 @@ import (
 	"syscall"
 
 	"github.com/docker/docker/pkg/mount"
-	"github.com/opencontainers/runc/libcontainer/cgroups"
-	"github.com/opencontainers/runc/libcontainer/cgroups/fs"
-	"github.com/opencontainers/runc/libcontainer/cgroups/systemd"
 	"github.com/opencontainers/runc/libcontainer/configs"
 	"github.com/opencontainers/runc/libcontainer/configs/validate"
 	"github.com/opencontainers/runc/libcontainer/utils"
@@ -63,31 +61,6 @@ func InitPath(path string, args ...string) func(*LinuxFactory) error {
 	}
 }
 
-// SystemdCgroups is an options func to configure a LinuxFactory to return
-// containers that use systemd to create and manage cgroups.
-func SystemdCgroups(l *LinuxFactory) error {
-	l.NewCgroupsManager = func(config *configs.Cgroup, paths map[string]string) cgroups.Manager {
-		return &systemd.Manager{
-			Cgroups: config,
-			Paths:   paths,
-		}
-	}
-	return nil
-}
-
-// Cgroupfs is an options func to configure a LinuxFactory to return
-// containers that use the native cgroups filesystem implementation to
-// create and manage cgroups.
-func Cgroupfs(l *LinuxFactory) error {
-	l.NewCgroupsManager = func(config *configs.Cgroup, paths map[string]string) cgroups.Manager {
-		return &fs.Manager{
-			Cgroups: config,
-			Paths:   paths,
-		}
-	}
-	return nil
-}
-
 // TmpfsRoot is an option func to mount LinuxFactory.Root to tmpfs.
 func TmpfsRoot(l *LinuxFactory) error {
 	mounted, err := mount.Mounted(l.Root)
@@ -116,7 +89,6 @@ func New(root string, options ...func(*LinuxFactory) error) (Factory, error) {
 		CriuPath:  "criu",
 	}
 	InitArgs(os.Args[0], "init")(l)
-	Cgroupfs(l)
 	for _, opt := range options {
 		if err := opt(l); err != nil {
 			return nil, err
@@ -143,9 +115,6 @@ type LinuxFactory struct {
 
 	// Validator provides validation to container configurations.
 	Validator validate.Validator
-
-	// NewCgroupsManager returns an initialized cgroups manager for a single container.
-	NewCgroupsManager func(config *configs.Cgroup, paths map[string]string) cgroups.Manager
 }
 
 func (l *LinuxFactory) Create(id string, config *configs.Config) (Container, error) {
@@ -168,13 +137,12 @@ func (l *LinuxFactory) Create(id string, config *configs.Config) (Container, err
 		return nil, newGenericError(err, SystemError)
 	}
 	c := &linuxContainer{
-		id:            id,
-		root:          containerRoot,
-		config:        config,
-		initPath:      l.InitPath,
-		initArgs:      l.InitArgs,
-		criuPath:      l.CriuPath,
-		cgroupManager: l.NewCgroupsManager(config.Cgroups, nil),
+		id:       id,
+		root:     containerRoot,
+		config:   config,
+		initPath: l.InitPath,
+		initArgs: l.InitArgs,
+		criuPath: l.CriuPath,
 	}
 	c.state = &stoppedState{c: c}
 	return c, nil
@@ -195,15 +163,14 @@ func (l *LinuxFactory) Load(id string) (Container, error) {
 		fds:              state.ExternalDescriptors,
 	}
 	c := &linuxContainer{
-		initProcess:   r,
-		id:            id,
-		config:        &state.Config,
-		initPath:      l.InitPath,
-		initArgs:      l.InitArgs,
-		criuPath:      l.CriuPath,
-		cgroupManager: l.NewCgroupsManager(state.Config.Cgroups, state.CgroupPaths),
-		root:          containerRoot,
-		created:       state.Created,
+		initProcess: r,
+		id:          id,
+		config:      &state.Config,
+		initPath:    l.InitPath,
+		initArgs:    l.InitArgs,
+		criuPath:    l.CriuPath,
+		root:        containerRoot,
+		created:     state.Created,
 	}
 	c.state = &createdState{c: c, s: Created}
 	if err := c.refreshState(); err != nil {

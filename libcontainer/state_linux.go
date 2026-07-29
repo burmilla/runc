@@ -1,3 +1,4 @@
+//go:build linux
 // +build linux
 
 package libcontainer
@@ -7,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/Sirupsen/logrus"
 	"github.com/opencontainers/runc/libcontainer/configs"
 	"github.com/opencontainers/runc/libcontainer/utils"
 )
@@ -37,21 +37,9 @@ type containerState interface {
 }
 
 func destroy(c *linuxContainer) error {
-	if !c.config.Namespaces.Contains(configs.NEWPID) {
-		if err := killCgroupProcesses(c.cgroupManager); err != nil {
-			logrus.Warn(err)
-		}
-	}
-	err := c.cgroupManager.Destroy()
-	if rerr := os.RemoveAll(c.root); err == nil {
-		err = rerr
-	}
 	c.initProcess = nil
-	if herr := runPoststopHooks(c); err == nil {
-		err = herr
-	}
 	c.state = &stoppedState{c: c}
-	return err
+	return nil
 }
 
 func runPoststopHooks(c *linuxContainer) error {
@@ -166,9 +154,6 @@ func (p *pausedState) destroy() error {
 		return err
 	}
 	if !isRunning {
-		if err := p.c.cgroupManager.Freeze(configs.Thawed); err != nil {
-			return err
-		}
 		return destroy(p.c)
 	}
 	return newGenericError(fmt.Errorf("container is paused"), ContainerPaused)

@@ -1,3 +1,4 @@
+//go:build linux
 // +build linux
 
 package libcontainer
@@ -17,12 +18,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/Sirupsen/logrus"
 	"github.com/golang/protobuf/proto"
-	"github.com/opencontainers/runc/libcontainer/cgroups"
 	"github.com/opencontainers/runc/libcontainer/configs"
 	"github.com/opencontainers/runc/libcontainer/criurpc"
 	"github.com/opencontainers/runc/libcontainer/utils"
+	"github.com/sirupsen/logrus"
 	"github.com/syndtr/gocapability/capability"
 	"github.com/vishvananda/netlink/nl"
 )
@@ -30,18 +30,17 @@ import (
 const stdioFdCount = 3
 
 type linuxContainer struct {
-	id            string
-	root          string
-	config        *configs.Config
-	cgroupManager cgroups.Manager
-	initPath      string
-	initArgs      []string
-	initProcess   parentProcess
-	criuPath      string
-	m             sync.Mutex
-	criuVersion   int
-	state         containerState
-	created       time.Time
+	id          string
+	root        string
+	config      *configs.Config
+	initPath    string
+	initArgs    []string
+	initProcess parentProcess
+	criuPath    string
+	m           sync.Mutex
+	criuVersion int
+	state       containerState
+	created     time.Time
 }
 
 // State represents a running container's state
@@ -49,10 +48,6 @@ type State struct {
 	BaseState
 
 	// Platform specific fields below here
-
-	// Path to all the cgroups setup for a container. Key is cgroup subsystem name
-	// with the value as the path.
-	CgroupPaths map[string]string `json:"cgroup_paths"`
 
 	// NamespacePaths are filepaths to the container's namespaces. Key is the namespace type
 	// with the value as the path.
@@ -102,18 +97,6 @@ type Container interface {
 	// ContainerDestroyed - Container no longer exists,
 	// Systemerror - System error.
 	Resume() error
-
-	// NotifyOOM returns a read-only channel signaling when the container receives an OOM notification.
-	//
-	// errors:
-	// Systemerror - System error.
-	NotifyOOM() (<-chan struct{}, error)
-
-	// NotifyMemoryPressure returns a read-only channel signaling when the container reaches a given pressure level
-	//
-	// errors:
-	// Systemerror - System error.
-	NotifyMemoryPressure(level PressureLevel) (<-chan struct{}, error)
 }
 
 // ID returns the container's unique ID
@@ -139,39 +122,18 @@ func (c *linuxContainer) State() (*State, error) {
 }
 
 func (c *linuxContainer) Processes() ([]int, error) {
-	pids, err := c.cgroupManager.GetAllPids()
-	if err != nil {
-		return nil, newSystemErrorWithCause(err, "getting all container pids from cgroups")
-	}
-	return pids, nil
+	return []int{}, nil
 }
 
 func (c *linuxContainer) Stats() (*Stats, error) {
 	var (
-		err   error
 		stats = &Stats{}
 	)
-	if stats.CgroupStats, err = c.cgroupManager.GetStats(); err != nil {
-		return stats, newSystemErrorWithCause(err, "getting container stats from cgroups")
-	}
-	for _, iface := range c.config.Networks {
-		switch iface.Type {
-		case "veth":
-			istats, err := getNetworkInterfaceStats(iface.HostInterfaceName)
-			if err != nil {
-				return stats, newSystemErrorWithCausef(err, "getting network stats for interface %q", iface.HostInterfaceName)
-			}
-			stats.Interfaces = append(stats.Interfaces, istats)
-		}
-	}
 	return stats, nil
 }
 
 func (c *linuxContainer) Set(config configs.Config) error {
-	c.m.Lock()
-	defer c.m.Unlock()
-	c.config = &config
-	return c.cgroupManager.Set(c.config)
+	return nil
 }
 
 func (c *linuxContainer) Start(process *Process) error {
@@ -286,7 +248,6 @@ func (c *linuxContainer) newInitProcess(p *Process, cmd *exec.Cmd, parentPipe, c
 		cmd:           cmd,
 		childPipe:     childPipe,
 		parentPipe:    parentPipe,
-		manager:       c.cgroupManager,
 		config:        c.newInitConfig(p),
 		container:     c,
 		process:       p,
@@ -310,7 +271,6 @@ func (c *linuxContainer) newSetnsProcess(p *Process, cmd *exec.Cmd, parentPipe, 
 	// TODO: set on container for process management
 	return &setnsProcess{
 		cmd:           cmd,
-		cgroupPaths:   c.cgroupManager.GetPaths(),
 		childPipe:     childPipe,
 		parentPipe:    parentPipe,
 		config:        c.newInitConfig(p),
@@ -374,9 +334,6 @@ func (c *linuxContainer) Pause() error {
 	if status != Running {
 		return newGenericError(fmt.Errorf("container not running"), ContainerNotRunning)
 	}
-	if err := c.cgroupManager.Freeze(configs.Frozen); err != nil {
-		return err
-	}
 	return c.state.transition(&pausedState{
 		c: c,
 	})
@@ -392,20 +349,9 @@ func (c *linuxContainer) Resume() error {
 	if status != Paused {
 		return newGenericError(fmt.Errorf("container not paused"), ContainerNotPaused)
 	}
-	if err := c.cgroupManager.Freeze(configs.Thawed); err != nil {
-		return err
-	}
 	return c.state.transition(&runningState{
 		c: c,
 	})
-}
-
-func (c *linuxContainer) NotifyOOM() (<-chan struct{}, error) {
-	return notifyOnOOM(c.cgroupManager.GetPaths())
-}
-
-func (c *linuxContainer) NotifyMemoryPressure(level PressureLevel) (<-chan struct{}, error) {
-	return notifyMemoryPressure(c.cgroupManager.GetPaths(), level)
 }
 
 // checkCriuVersion checks Criu version greater than or equal to minVersion
@@ -524,7 +470,6 @@ func (c *linuxContainer) Checkpoint(criuOpts *CriuOpts) error {
 		LogLevel:       proto.Int32(4),
 		LogFile:        proto.String("dump.log"),
 		Root:           proto.String(c.config.Rootfs),
-		ManageCgroups:  proto.Bool(true),
 		NotifyScripts:  proto.Bool(true),
 		Pid:            proto.Int32(int32(c.initProcess.pid())),
 		ShellJob:       proto.Bool(criuOpts.ShellJob),
@@ -543,15 +488,6 @@ func (c *linuxContainer) Checkpoint(criuOpts *CriuOpts) error {
 		}
 	}
 
-	// append optional manage cgroups mode
-	if criuOpts.ManageCgroupsMode != 0 {
-		if err := c.checkCriuVersion("1.7"); err != nil {
-			return err
-		}
-		mode := criurpc.CriuCgMode(criuOpts.ManageCgroupsMode)
-		rpcOpts.ManageCgroupsMode = &mode
-	}
-
 	t := criurpc.CriuReqType_DUMP
 	req := &criurpc.CriuReq{
 		Type: &t,
@@ -563,16 +499,6 @@ func (c *linuxContainer) Checkpoint(criuOpts *CriuOpts) error {
 		case "bind":
 			c.addCriuDumpMount(req, m)
 			break
-		case "cgroup":
-			binds, err := getCgroupMounts(m)
-			if err != nil {
-				return err
-			}
-			for _, b := range binds {
-				c.addCriuDumpMount(req, b)
-			}
-			break
-		}
 	}
 
 	// Write the FD info to a file in the image directory
@@ -664,7 +590,6 @@ func (c *linuxContainer) Restore(process *Process, criuOpts *CriuOpts) error {
 			LogFile:        proto.String("restore.log"),
 			RstSibling:     proto.Bool(true),
 			Root:           proto.String(root),
-			ManageCgroups:  proto.Bool(true),
 			NotifyScripts:  proto.Bool(true),
 			ShellJob:       proto.Bool(criuOpts.ShellJob),
 			ExtUnixSk:      proto.Bool(criuOpts.ExternalUnixConnections),
@@ -679,16 +604,6 @@ func (c *linuxContainer) Restore(process *Process, criuOpts *CriuOpts) error {
 		case "bind":
 			c.addCriuRestoreMount(req, m)
 			break
-		case "cgroup":
-			binds, err := getCgroupMounts(m)
-			if err != nil {
-				return err
-			}
-			for _, b := range binds {
-				c.addCriuRestoreMount(req, b)
-			}
-			break
-		}
 	}
 	for _, iface := range c.config.Networks {
 		switch iface.Type {
@@ -707,15 +622,6 @@ func (c *linuxContainer) Restore(process *Process, criuOpts *CriuOpts) error {
 		veth.IfOut = proto.String(i.HostInterfaceName)
 		veth.IfIn = proto.String(i.ContainerInterfaceName)
 		req.Opts.Veths = append(req.Opts.Veths, veth)
-	}
-
-	// append optional manage cgroups mode
-	if criuOpts.ManageCgroupsMode != 0 {
-		if err := c.checkCriuVersion("1.7"); err != nil {
-			return err
-		}
-		mode := criurpc.CriuCgMode(criuOpts.ManageCgroupsMode)
-		req.Opts.ManageCgroupsMode = &mode
 	}
 
 	var (
@@ -737,29 +643,7 @@ func (c *linuxContainer) Restore(process *Process, criuOpts *CriuOpts) error {
 			req.Opts.InheritFd = append(req.Opts.InheritFd, inheritFd)
 		}
 	}
-	return c.criuSwrk(process, req, criuOpts, true)
-}
-
-func (c *linuxContainer) criuApplyCgroups(pid int, req *criurpc.CriuReq) error {
-	if err := c.cgroupManager.Apply(pid); err != nil {
-		return err
-	}
-
-	path := fmt.Sprintf("/proc/%d/cgroup", pid)
-	cgroupsPaths, err := cgroups.ParseCgroupFile(path)
-	if err != nil {
-		return err
-	}
-
-	for c, p := range cgroupsPaths {
-		cgroupRoot := &criurpc.CgroupRoot{
-			Ctrl: proto.String(c),
-			Path: proto.String(p),
-		}
-		req.Opts.CgRoot = append(req.Opts.CgRoot, cgroupRoot)
-	}
-
-	return nil
+	return c.criuSwrk(process, req, criuOpts, false)
 }
 
 func (c *linuxContainer) criuSwrk(process *Process, req *criurpc.CriuReq, opts *CriuOpts, applyCgroups bool) error {
@@ -797,13 +681,6 @@ func (c *linuxContainer) criuSwrk(process *Process, req *criurpc.CriuReq, opts *
 			return
 		}
 	}()
-
-	if applyCgroups {
-		err := c.criuApplyCgroups(cmd.Process.Pid, req)
-		if err != nil {
-			return err
-		}
-	}
 
 	var extFds []string
 	if process != nil {
@@ -1052,14 +929,7 @@ func (c *linuxContainer) isRunning() (bool, error) {
 }
 
 func (c *linuxContainer) isPaused() (bool, error) {
-	data, err := ioutil.ReadFile(filepath.Join(c.cgroupManager.GetPaths()["freezer"], "freezer.state"))
-	if err != nil {
-		if os.IsNotExist(err) {
-			return false, nil
-		}
-		return false, newSystemErrorWithCause(err, "checking if container is paused")
-	}
-	return bytes.Equal(bytes.TrimSpace(data), []byte("FROZEN")), nil
+	return false, nil
 }
 
 func (c *linuxContainer) currentState() (*State, error) {
@@ -1081,7 +951,6 @@ func (c *linuxContainer) currentState() (*State, error) {
 			InitProcessStartTime: startTime,
 			Created:              c.created,
 		},
-		CgroupPaths:         c.cgroupManager.GetPaths(),
 		NamespacePaths:      make(map[configs.NamespaceType]string),
 		ExternalDescriptors: externalDescriptors,
 	}

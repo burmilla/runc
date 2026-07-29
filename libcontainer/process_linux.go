@@ -1,3 +1,4 @@
+//go:build linux
 // +build linux
 
 package libcontainer
@@ -180,7 +181,6 @@ type initProcess struct {
 	parentPipe    *os.File
 	childPipe     *os.File
 	config        *initConfig
-	manager       cgroups.Manager
 	container     *linuxContainer
 	fds           []string
 	process       *Process
@@ -247,17 +247,6 @@ func (p *initProcess) start() error {
 		return newSystemErrorWithCausef(err, "getting pipe fds for pid %d", p.pid())
 	}
 	p.setExternalDescriptors(fds)
-	// Do this before syncing with child so that no children
-	// can escape the cgroup
-	if err := p.manager.Apply(p.pid()); err != nil {
-		return newSystemErrorWithCause(err, "applying cgroup configuration for process")
-	}
-	defer func() {
-		if err != nil {
-			// TODO: should not be the responsibility to call here
-			p.manager.Destroy()
-		}
-	}()
 	if err := p.createNetworkInterfaces(); err != nil {
 		return newSystemErrorWithCause(err, "creating nework interfaces")
 	}
@@ -282,9 +271,6 @@ loop:
 		}
 		switch procSync.Type {
 		case procReady:
-			if err := p.manager.Set(p.config.Config); err != nil {
-				return newSystemErrorWithCause(err, "setting cgroup config for ready process")
-			}
 			// set oom_score_adj
 			if err := setOomScoreAdj(p.config.Config.OomScoreAdj, p.pid()); err != nil {
 				return newSystemErrorWithCause(err, "setting oom score for ready process")
@@ -371,10 +357,6 @@ func (p *initProcess) wait() (*os.ProcessState, error) {
 	err := p.cmd.Wait()
 	if err != nil {
 		return p.cmd.ProcessState, err
-	}
-	// we should kill all processes in cgroup when init is died if we use host PID namespace
-	if p.sharePidns {
-		killCgroupProcesses(p.manager)
 	}
 	return p.cmd.ProcessState, nil
 }

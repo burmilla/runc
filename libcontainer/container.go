@@ -1,5 +1,5 @@
 // Package libcontainer provides a native Go implementation for creating containers
-// with namespaces, cgroups, capabilities, and filesystem access controls.
+// with namespaces, capabilities, and filesystem access controls.
 // It allows you to manage the lifecycle of the container performing additional operations
 // after the container is created.
 package libcontainer

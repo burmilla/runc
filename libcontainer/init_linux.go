@@ -1,3 +1,4 @@
+//go:build linux
 // +build linux
 
 package libcontainer
@@ -13,8 +14,6 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/Sirupsen/logrus"
-	"github.com/opencontainers/runc/libcontainer/cgroups"
 	"github.com/opencontainers/runc/libcontainer/configs"
 	"github.com/opencontainers/runc/libcontainer/system"
 	"github.com/opencontainers/runc/libcontainer/user"
@@ -329,39 +328,4 @@ func setOomScoreAdj(oomScoreAdj int, pid int) error {
 	path := fmt.Sprintf("/proc/%d/oom_score_adj", pid)
 
 	return ioutil.WriteFile(path, []byte(strconv.Itoa(oomScoreAdj)), 0600)
-}
-
-// killCgroupProcesses freezes then iterates over all the processes inside the
-// manager's cgroups sending a SIGKILL to each process then waiting for them to
-// exit.
-func killCgroupProcesses(m cgroups.Manager) error {
-	var procs []*os.Process
-	if err := m.Freeze(configs.Frozen); err != nil {
-		logrus.Warn(err)
-	}
-	pids, err := m.GetAllPids()
-	if err != nil {
-		m.Freeze(configs.Thawed)
-		return err
-	}
-	for _, pid := range pids {
-		p, err := os.FindProcess(pid)
-		if err != nil {
-			logrus.Warn(err)
-			continue
-		}
-		procs = append(procs, p)
-		if err := p.Kill(); err != nil {
-			logrus.Warn(err)
-		}
-	}
-	if err := m.Freeze(configs.Thawed); err != nil {
-		logrus.Warn(err)
-	}
-	for _, p := range procs {
-		if _, err := p.Wait(); err != nil {
-			logrus.Warn(err)
-		}
-	}
-	return nil
 }
