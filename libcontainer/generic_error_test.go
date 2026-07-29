@@ -35,7 +35,7 @@ func TestErrorWithError(t *testing.T) {
 	}
 
 	for _, v := range cc {
-		err := newSystemErrorWithCause(fmt.Errorf(v.errmsg), v.cause)
+		err := newSystemErrorWithCause(fmt.Errorf("%s", v.errmsg), v.cause)
 
 		msg := err.Error()
 		if v.cause == "" && msg != v.errmsg {

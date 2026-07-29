@@ -18,7 +18,6 @@ using the runc checkpoint command.
    --ext-unix-sk                allow external unix sockets
    --shell-job                  allow shell jobs
    --file-locks                 handle file locks, for safety
-   --manage-cgroups-mode value  cgroups mode: 'soft' (default), 'full' and 'strict'
    --bundle value, -b value     path to the root of the bundle directory
    --detach, -d                 detach from the container's process
    --pid-file value             specify the file to write the process id to

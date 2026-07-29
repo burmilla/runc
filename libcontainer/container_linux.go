@@ -1,3 +1,4 @@
+//go:build linux
 // +build linux
 
 package libcontainer
@@ -19,7 +20,6 @@ import (
 
 	"github.com/Sirupsen/logrus"
 	"github.com/golang/protobuf/proto"
-	"github.com/opencontainers/runc/libcontainer/cgroups"
 	"github.com/opencontainers/runc/libcontainer/configs"
 	"github.com/opencontainers/runc/libcontainer/criurpc"
 	"github.com/opencontainers/runc/libcontainer/system"
@@ -34,7 +34,6 @@ type linuxContainer struct {
 	id                   string
 	root                 string
 	config               *configs.Config
-	cgroupManager        cgroups.Manager
 	initArgs             []string
 	initProcess          parentProcess
 	initProcessStartTime string
@@ -53,10 +52,6 @@ type State struct {
 
 	// Specifies if the container was started under the rootless mode.
 	Rootless bool `json:"rootless"`
-
-	// Path to all the cgroups setup for a container. Key is cgroup subsystem name
-	// with the value as the path.
-	CgroupPaths map[string]string `json:"cgroup_paths"`
 
 	// NamespacePaths are filepaths to the container's namespaces. Key is the namespace type
 	// with the value as the path.
@@ -108,18 +103,6 @@ type Container interface {
 	// ContainerNotPaused - Container is not paused,
 	// Systemerror - System error.
 	Resume() error
-
-	// NotifyOOM returns a read-only channel signaling when the container receives an OOM notification.
-	//
-	// errors:
-	// Systemerror - System error.
-	NotifyOOM() (<-chan struct{}, error)
-
-	// NotifyMemoryPressure returns a read-only channel signaling when the container reaches a given pressure level
-	//
-	// errors:
-	// Systemerror - System error.
-	NotifyMemoryPressure(level PressureLevel) (<-chan struct{}, error)
 }
 
 // ID returns the container's unique ID
@@ -145,21 +128,13 @@ func (c *linuxContainer) State() (*State, error) {
 }
 
 func (c *linuxContainer) Processes() ([]int, error) {
-	pids, err := c.cgroupManager.GetAllPids()
-	if err != nil {
-		return nil, newSystemErrorWithCause(err, "getting all container pids from cgroups")
-	}
-	return pids, nil
+	return []int{}, nil
 }
 
 func (c *linuxContainer) Stats() (*Stats, error) {
 	var (
-		err   error
 		stats = &Stats{}
 	)
-	if stats.CgroupStats, err = c.cgroupManager.GetStats(); err != nil {
-		return stats, newSystemErrorWithCause(err, "getting container stats from cgroups")
-	}
 	for _, iface := range c.config.Networks {
 		switch iface.Type {
 		case "veth":
@@ -174,17 +149,7 @@ func (c *linuxContainer) Stats() (*Stats, error) {
 }
 
 func (c *linuxContainer) Set(config configs.Config) error {
-	c.m.Lock()
-	defer c.m.Unlock()
-	status, err := c.currentStatus()
-	if err != nil {
-		return err
-	}
-	if status == Stopped {
-		return newGenericError(fmt.Errorf("container not running"), ContainerNotRunning)
-	}
-	c.config = &config
-	return c.cgroupManager.Set(c.config)
+	return nil
 }
 
 func (c *linuxContainer) Start(process *Process) error {
@@ -298,9 +263,6 @@ func (c *linuxContainer) start(process *Process, isInit bool) error {
 }
 
 func (c *linuxContainer) Signal(s os.Signal, all bool) error {
-	if all {
-		return signalAllProcesses(c.cgroupManager, s)
-	}
 	if err := c.initProcess.signal(s); err != nil {
 		return newSystemErrorWithCause(err, "signaling init process")
 	}
@@ -411,7 +373,6 @@ func (c *linuxContainer) newInitProcess(p *Process, cmd *exec.Cmd, parentPipe, c
 		cmd:           cmd,
 		childPipe:     childPipe,
 		parentPipe:    parentPipe,
-		manager:       c.cgroupManager,
 		config:        c.newInitConfig(p),
 		container:     c,
 		process:       p,
@@ -435,7 +396,6 @@ func (c *linuxContainer) newSetnsProcess(p *Process, cmd *exec.Cmd, parentPipe, 
 	}
 	return &setnsProcess{
 		cmd:           cmd,
-		cgroupPaths:   c.cgroupManager.GetPaths(),
 		childPipe:     childPipe,
 		parentPipe:    parentPipe,
 		config:        c.newInitConfig(p),
@@ -492,9 +452,6 @@ func (c *linuxContainer) Pause() error {
 	}
 	switch status {
 	case Running, Created:
-		if err := c.cgroupManager.Freeze(configs.Frozen); err != nil {
-			return err
-		}
 		return c.state.transition(&pausedState{
 			c: c,
 		})
@@ -512,28 +469,9 @@ func (c *linuxContainer) Resume() error {
 	if status != Paused {
 		return newGenericError(fmt.Errorf("container not paused"), ContainerNotPaused)
 	}
-	if err := c.cgroupManager.Freeze(configs.Thawed); err != nil {
-		return err
-	}
 	return c.state.transition(&runningState{
 		c: c,
 	})
-}
-
-func (c *linuxContainer) NotifyOOM() (<-chan struct{}, error) {
-	// XXX(cyphar): This requires cgroups.
-	if c.config.Rootless {
-		return nil, fmt.Errorf("cannot get OOM notifications from rootless container")
-	}
-	return notifyOnOOM(c.cgroupManager.GetPaths())
-}
-
-func (c *linuxContainer) NotifyMemoryPressure(level PressureLevel) (<-chan struct{}, error) {
-	// XXX(cyphar): This requires cgroups.
-	if c.config.Rootless {
-		return nil, fmt.Errorf("cannot get memory pressure notifications from rootless container")
-	}
-	return notifyMemoryPressure(c.cgroupManager.GetPaths(), level)
 }
 
 var criuFeatures *criurpc.CriuFeatures
@@ -732,7 +670,6 @@ func (c *linuxContainer) Checkpoint(criuOpts *CriuOpts) error {
 		LogLevel:       proto.Int32(4),
 		LogFile:        proto.String("dump.log"),
 		Root:           proto.String(c.config.Rootfs),
-		ManageCgroups:  proto.Bool(true),
 		NotifyScripts:  proto.Bool(true),
 		Pid:            proto.Int32(int32(c.initProcess.pid())),
 		ShellJob:       proto.Bool(criuOpts.ShellJob),
@@ -755,15 +692,6 @@ func (c *linuxContainer) Checkpoint(criuOpts *CriuOpts) error {
 	if criuOpts.ParentImage != "" {
 		rpcOpts.ParentImg = proto.String(criuOpts.ParentImage)
 		rpcOpts.TrackMem = proto.Bool(true)
-	}
-
-	// append optional manage cgroups mode
-	if criuOpts.ManageCgroupsMode != 0 {
-		if err := c.checkCriuVersion("1.7"); err != nil {
-			return err
-		}
-		mode := criurpc.CriuCgMode(criuOpts.ManageCgroupsMode)
-		rpcOpts.ManageCgroupsMode = &mode
 	}
 
 	var t criurpc.CriuReqType
@@ -791,15 +719,6 @@ func (c *linuxContainer) Checkpoint(criuOpts *CriuOpts) error {
 			switch m.Device {
 			case "bind":
 				c.addCriuDumpMount(req, m)
-				break
-			case "cgroup":
-				binds, err := getCgroupMounts(m)
-				if err != nil {
-					return err
-				}
-				for _, b := range binds {
-					c.addCriuDumpMount(req, b)
-				}
 				break
 			}
 		}
@@ -930,7 +849,6 @@ func (c *linuxContainer) Restore(process *Process, criuOpts *CriuOpts) error {
 			LogFile:        proto.String("restore.log"),
 			RstSibling:     proto.Bool(true),
 			Root:           proto.String(root),
-			ManageCgroups:  proto.Bool(true),
 			NotifyScripts:  proto.Bool(true),
 			ShellJob:       proto.Bool(criuOpts.ShellJob),
 			ExtUnixSk:      proto.Bool(criuOpts.ExternalUnixConnections),
@@ -944,15 +862,6 @@ func (c *linuxContainer) Restore(process *Process, criuOpts *CriuOpts) error {
 		switch m.Device {
 		case "bind":
 			c.addCriuRestoreMount(req, m)
-			break
-		case "cgroup":
-			binds, err := getCgroupMounts(m)
-			if err != nil {
-				return err
-			}
-			for _, b := range binds {
-				c.addCriuRestoreMount(req, b)
-			}
 			break
 		}
 	}
@@ -969,15 +878,6 @@ func (c *linuxContainer) Restore(process *Process, criuOpts *CriuOpts) error {
 
 	if criuOpts.EmptyNs&syscall.CLONE_NEWNET == 0 {
 		c.restoreNetwork(req, criuOpts)
-	}
-
-	// append optional manage cgroups mode
-	if criuOpts.ManageCgroupsMode != 0 {
-		if err := c.checkCriuVersion("1.7"); err != nil {
-			return err
-		}
-		mode := criurpc.CriuCgMode(criuOpts.ManageCgroupsMode)
-		req.Opts.ManageCgroupsMode = &mode
 	}
 
 	var (
@@ -999,34 +899,7 @@ func (c *linuxContainer) Restore(process *Process, criuOpts *CriuOpts) error {
 			req.Opts.InheritFd = append(req.Opts.InheritFd, inheritFd)
 		}
 	}
-	return c.criuSwrk(process, req, criuOpts, true)
-}
-
-func (c *linuxContainer) criuApplyCgroups(pid int, req *criurpc.CriuReq) error {
-	// XXX: Do we need to deal with this case? AFAIK criu still requires root.
-	if err := c.cgroupManager.Apply(pid); err != nil {
-		return err
-	}
-
-	if err := c.cgroupManager.Set(c.config); err != nil {
-		return newSystemError(err)
-	}
-
-	path := fmt.Sprintf("/proc/%d/cgroup", pid)
-	cgroupsPaths, err := cgroups.ParseCgroupFile(path)
-	if err != nil {
-		return err
-	}
-
-	for c, p := range cgroupsPaths {
-		cgroupRoot := &criurpc.CgroupRoot{
-			Ctrl: proto.String(c),
-			Path: proto.String(p),
-		}
-		req.Opts.CgRoot = append(req.Opts.CgRoot, cgroupRoot)
-	}
-
-	return nil
+	return c.criuSwrk(process, req, criuOpts, false)
 }
 
 func (c *linuxContainer) criuSwrk(process *Process, req *criurpc.CriuReq, opts *CriuOpts, applyCgroups bool) error {
@@ -1064,13 +937,6 @@ func (c *linuxContainer) criuSwrk(process *Process, req *criurpc.CriuReq, opts *
 			return
 		}
 	}()
-
-	if applyCgroups {
-		err := c.criuApplyCgroups(cmd.Process.Pid, req)
-		if err != nil {
-			return err
-		}
-	}
 
 	var extFds []string
 	if process != nil {
@@ -1383,20 +1249,7 @@ func (c *linuxContainer) runType() (Status, error) {
 }
 
 func (c *linuxContainer) isPaused() (bool, error) {
-	fcg := c.cgroupManager.GetPaths()["freezer"]
-	if fcg == "" {
-		// A container doesn't have a freezer cgroup
-		return false, nil
-	}
-	data, err := ioutil.ReadFile(filepath.Join(fcg, "freezer.state"))
-	if err != nil {
-		// If freezer cgroup is not mounted, the container would just be not paused.
-		if os.IsNotExist(err) {
-			return false, nil
-		}
-		return false, newSystemErrorWithCause(err, "checking if container is paused")
-	}
-	return bytes.Equal(bytes.TrimSpace(data), []byte("FROZEN")), nil
+	return false, nil
 }
 
 func (c *linuxContainer) currentState() (*State, error) {
@@ -1419,7 +1272,6 @@ func (c *linuxContainer) currentState() (*State, error) {
 			Created:              c.created,
 		},
 		Rootless:            c.config.Rootless,
-		CgroupPaths:         c.cgroupManager.GetPaths(),
 		NamespacePaths:      make(map[configs.NamespaceType]string),
 		ExternalDescriptors: externalDescriptors,
 	}

@@ -178,18 +178,3 @@ func TestValidateRootlessMountGid(t *testing.T) {
 	}
 }
 
-/* rootlessCgroup() */
-
-func TestValidateRootlessCgroup(t *testing.T) {
-	validator := New()
-
-	config := rootlessConfig()
-	config.Cgroups = &configs.Cgroup{
-		Resources: &configs.Resources{
-			PidsLimit: 1337,
-		},
-	}
-	if err := validator.Validate(config); err == nil {
-		t.Errorf("Expected error to occur if cgroup limits set")
-	}
-}

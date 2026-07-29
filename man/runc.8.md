@@ -52,6 +52,5 @@ value for "bundle" is the current directory.
    --log-format value   set the format used by logs ('text' (default), or 'json') (default: "text")
    --root value         root directory for storage of container state (this should be located in tmpfs) (default: "/run/runc")
    --criu value         path to the criu binary used for checkpoint and restore (default: "criu")
-   --systemd-cgroup     enable systemd cgroup support, expects cgroupsPath to be of form "slice:prefix:name" for e.g. "system.slice:runc:434234"
    --help, -h           show help
    --version, -v        print the version

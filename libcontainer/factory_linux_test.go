@@ -29,7 +29,7 @@ func TestFactoryNew(t *testing.T) {
 		t.Fatal(rerr)
 	}
 	defer os.RemoveAll(root)
-	factory, err := New(root, Cgroupfs)
+	factory, err := New(root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +55,7 @@ func TestFactoryNewTmpfs(t *testing.T) {
 		t.Fatal(rerr)
 	}
 	defer os.RemoveAll(root)
-	factory, err := New(root, Cgroupfs, TmpfsRoot)
+	factory, err := New(root, TmpfsRoot)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +108,7 @@ func TestFactoryLoadNotExists(t *testing.T) {
 		t.Fatal(rerr)
 	}
 	defer os.RemoveAll(root)
-	factory, err := New(root, Cgroupfs)
+	factory, err := New(root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,7 +163,7 @@ func TestFactoryLoadContainer(t *testing.T) {
 	if err := marshal(filepath.Join(root, id, stateFilename), expectedState); err != nil {
 		t.Fatal(err)
 	}
-	factory, err := New(root, Cgroupfs)
+	factory, err := New(root)
 	if err != nil {
 		t.Fatal(err)
 	}

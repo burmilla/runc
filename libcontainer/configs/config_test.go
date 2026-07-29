@@ -155,7 +155,7 @@ func TestCommandHookRun(t *testing.T) {
 
 	err := cmdHook.Run(state)
 	if err != nil {
-		t.Errorf(fmt.Sprintf("Expected error to not occur but it was %+v", err))
+		t.Errorf("Expected error to not occur but it was %+v", err)
 	}
 }
 

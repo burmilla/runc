@@ -1,3 +1,4 @@
+//go:build linux
 // +build linux
 
 package libcontainer
@@ -13,7 +14,6 @@ import (
 	"strconv"
 	"syscall"
 
-	"github.com/opencontainers/runc/libcontainer/cgroups"
 	"github.com/opencontainers/runc/libcontainer/configs"
 	"github.com/opencontainers/runc/libcontainer/system"
 	"github.com/opencontainers/runc/libcontainer/utils"
@@ -46,7 +46,6 @@ type setnsProcess struct {
 	cmd           *exec.Cmd
 	parentPipe    *os.File
 	childPipe     *os.File
-	cgroupPaths   map[string]string
 	config        *initConfig
 	fds           []string
 	process       *Process
@@ -79,12 +78,6 @@ func (p *setnsProcess) start() (err error) {
 	}
 	if err = p.execSetns(); err != nil {
 		return newSystemErrorWithCause(err, "executing setns process")
-	}
-	// We can't join cgroups if we're in a rootless container.
-	if !p.config.Rootless && len(p.cgroupPaths) > 0 {
-		if err := cgroups.EnterPid(p.cgroupPaths, p.pid()); err != nil {
-			return newSystemErrorWithCausef(err, "adding pid %d to cgroups", p.pid())
-		}
 	}
 	// set rlimits, this has to be done here because we lose permissions
 	// to raise the limits once we enter a user-namespace
@@ -184,7 +177,6 @@ type initProcess struct {
 	parentPipe    *os.File
 	childPipe     *os.File
 	config        *initConfig
-	manager       cgroups.Manager
 	container     *linuxContainer
 	fds           []string
 	process       *Process
@@ -254,18 +246,6 @@ func (p *initProcess) start() error {
 		return newSystemErrorWithCausef(err, "getting pipe fds for pid %d", p.pid())
 	}
 	p.setExternalDescriptors(fds)
-	// Do this before syncing with child so that no children can escape the
-	// cgroup. We don't need to worry about not doing this and not being root
-	// because we'd be using the rootless cgroup manager in that case.
-	if err := p.manager.Apply(p.pid()); err != nil {
-		return newSystemErrorWithCause(err, "applying cgroup configuration for process")
-	}
-	defer func() {
-		if err != nil {
-			// TODO: should not be the responsibility to call here
-			p.manager.Destroy()
-		}
-	}()
 	if err := p.createNetworkInterfaces(); err != nil {
 		return newSystemErrorWithCause(err, "creating network interfaces")
 	}
@@ -280,9 +260,6 @@ func (p *initProcess) start() error {
 	ierr := parseSync(p.parentPipe, func(sync *syncT) error {
 		switch sync.Type {
 		case procReady:
-			if err := p.manager.Set(p.config.Config); err != nil {
-				return newSystemErrorWithCause(err, "setting cgroup config for ready process")
-			}
 			// set rlimits, this has to be done here because we lose permissions
 			// to raise the limits once we enter a user-namespace
 			if err := setupRlimits(p.config.Rlimits, p.pid()); err != nil {
@@ -357,10 +334,6 @@ func (p *initProcess) wait() (*os.ProcessState, error) {
 	err := p.cmd.Wait()
 	if err != nil {
 		return p.cmd.ProcessState, err
-	}
-	// we should kill all processes in cgroup when init is died if we use host PID namespace
-	if p.sharePidns {
-		signalAllProcesses(p.manager, syscall.SIGKILL)
 	}
 	return p.cmd.ProcessState, nil
 }
