@@ -1,3 +1,4 @@
+//go:build linux
 // +build linux
 
 package libcontainer
@@ -61,29 +62,4 @@ func registerMemoryEvent(cgDir string, evName string, arg string) (<-chan struct
 		}
 	}()
 	return ch, nil
-}
-
-// notifyOnOOM returns channel on which you can expect event about OOM,
-// if process died without OOM this channel will be closed.
-func notifyOnOOM(paths map[string]string) (<-chan struct{}, error) {
-	dir := paths[oomCgroupName]
-	if dir == "" {
-		return nil, fmt.Errorf("path %q missing", oomCgroupName)
-	}
-
-	return registerMemoryEvent(dir, "memory.oom_control", "")
-}
-
-func notifyMemoryPressure(paths map[string]string, level PressureLevel) (<-chan struct{}, error) {
-	dir := paths[oomCgroupName]
-	if dir == "" {
-		return nil, fmt.Errorf("path %q missing", oomCgroupName)
-	}
-
-	if level > CriticalPressure {
-		return nil, fmt.Errorf("invalid pressure level %d", level)
-	}
-
-	levelStr := []string{"low", "medium", "critical"}[level]
-	return registerMemoryEvent(dir, "memory.pressure_level", levelStr)
 }

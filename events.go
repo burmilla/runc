@@ -1,3 +1,4 @@
+//go:build linux
 // +build linux
 
 package main
@@ -161,10 +162,6 @@ information is displayed once every 5 seconds.`,
 				stats <- s
 			}
 		}()
-		n, err := container.NotifyOOM()
-		if err != nil {
-			return err
-		}
 		for {
 			select {
 			case _, ok := <-n:
