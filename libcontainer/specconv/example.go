@@ -108,12 +108,6 @@ func Example() *specs.Spec {
 				Source:      "sysfs",
 				Options:     []string{"nosuid", "noexec", "nodev", "ro"},
 			},
-			{
-				Destination: "/sys/fs/cgroup",
-				Type:        "cgroup",
-				Source:      "cgroup",
-				Options:     []string{"nosuid", "noexec", "nodev", "relatime", "ro"},
-			},
 		},
 		Linux: &specs.Linux{
 			MaskedPaths: []string{
@@ -131,14 +125,6 @@ func Example() *specs.Spec {
 				"/proc/irq",
 				"/proc/sys",
 				"/proc/sysrq-trigger",
-			},
-			Resources: &specs.LinuxResources{
-				Devices: []specs.LinuxDeviceCgroup{
-					{
-						Allow:  false,
-						Access: "rwm",
-					},
-				},
 			},
 			Namespaces: []specs.LinuxNamespace{
 				{
@@ -221,7 +207,4 @@ func ToRootless(spec *specs.Spec) {
 		Options:     []string{"rbind", "nosuid", "noexec", "nodev", "ro"},
 	})
 	spec.Mounts = mounts
-
-	// Remove cgroup settings.
-	spec.Linux.Resources = nil
 }
