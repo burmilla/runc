@@ -69,8 +69,8 @@ func TestGetContainerStats(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if stats.CgroupStats != nil {
-		t.Fatal("cgroup stats should be nil since this build has no cgroups dependency")
+	if len(stats.Interfaces) != 0 {
+		t.Fatalf("expected no network interfaces but received %v", stats.Interfaces)
 	}
 }
 

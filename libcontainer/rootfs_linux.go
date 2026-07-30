@@ -17,7 +17,6 @@ import (
 	"github.com/docker/docker/pkg/mount"
 	"github.com/docker/docker/pkg/symlink"
 	"github.com/mrunalp/fileutils"
-	"github.com/opencontainers/runc/libcontainer/cgroups"
 	"github.com/opencontainers/runc/libcontainer/configs"
 	"github.com/opencontainers/runc/libcontainer/system"
 	libcontainerUtils "github.com/opencontainers/runc/libcontainer/utils"
@@ -263,55 +262,11 @@ func mountToRootfs(m *configs.Mount, rootfs, mountLabel string) error {
 			}
 		}
 	case "cgroup":
-		binds, err := getCgroupMounts(m)
-		if err != nil {
-			return err
-		}
-		var merged []string
-		for _, b := range binds {
-			ss := filepath.Base(b.Destination)
-			if strings.Contains(ss, ",") {
-				merged = append(merged, ss)
-			}
-		}
-		tmpfs := &configs.Mount{
-			Source:           "tmpfs",
-			Device:           "tmpfs",
-			Destination:      m.Destination,
-			Flags:            defaultMountFlags,
-			Data:             "mode=755",
-			PropagationFlags: m.PropagationFlags,
-		}
-		if err := mountToRootfs(tmpfs, rootfs, mountLabel); err != nil {
-			return err
-		}
-		for _, b := range binds {
-			if err := mountToRootfs(b, rootfs, mountLabel); err != nil {
-				return err
-			}
-		}
-		for _, mc := range merged {
-			for _, ss := range strings.Split(mc, ",") {
-				// symlink(2) is very dumb, it will just shove the path into
-				// the link and doesn't do any checks or relative path
-				// conversion. Also, don't error out if the cgroup already exists.
-				if err := os.Symlink(mc, filepath.Join(rootfs, m.Destination, ss)); err != nil && !os.IsExist(err) {
-					return err
-				}
-			}
-		}
-		if m.Flags&syscall.MS_RDONLY != 0 {
-			// remount cgroup root as readonly
-			mcgrouproot := &configs.Mount{
-				Source:      m.Destination,
-				Device:      "bind",
-				Destination: m.Destination,
-				Flags:       defaultMountFlags | syscall.MS_RDONLY | syscall.MS_BIND,
-			}
-			if err := remount(mcgrouproot, rootfs); err != nil {
-				return err
-			}
-		}
+		// This build of runc has no cgroups dependency: mounts of type
+		// "cgroup" (commonly present in OCI specs to give the container a
+		// view of the host's cgroup hierarchy) are silently skipped rather
+		// than requiring a host cgroup filesystem to introspect.
+		return nil
 	default:
 		// ensure that the destination of the mount is resolved of symlinks at mount time because
 		// any previous mounts can invalidate the next mount's destination.
@@ -332,40 +287,6 @@ func mountToRootfs(m *configs.Mount, rootfs, mountLabel string) error {
 		return mountPropagate(m, rootfs, mountLabel)
 	}
 	return nil
-}
-
-func getCgroupMounts(m *configs.Mount) ([]*configs.Mount, error) {
-	mounts, err := cgroups.GetCgroupMounts(false)
-	if err != nil {
-		return nil, err
-	}
-
-	cgroupPaths, err := cgroups.ParseCgroupFile("/proc/self/cgroup")
-	if err != nil {
-		return nil, err
-	}
-
-	var binds []*configs.Mount
-
-	for _, mm := range mounts {
-		dir, err := mm.GetOwnCgroup(cgroupPaths)
-		if err != nil {
-			return nil, err
-		}
-		relDir, err := filepath.Rel(mm.Root, dir)
-		if err != nil {
-			return nil, err
-		}
-		binds = append(binds, &configs.Mount{
-			Device:           "bind",
-			Source:           filepath.Join(mm.Mountpoint, relDir),
-			Destination:      filepath.Join(m.Destination, filepath.Base(mm.Mountpoint)),
-			Flags:            syscall.MS_BIND | syscall.MS_REC | m.Flags,
-			PropagationFlags: m.PropagationFlags,
-		})
-	}
-
-	return binds, nil
 }
 
 // checkMountDestination checks to ensure that the mount destination is not over the top of /proc.
