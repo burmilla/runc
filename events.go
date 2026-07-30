@@ -162,24 +162,8 @@ information is displayed once every 5 seconds.`,
 				stats <- s
 			}
 		}()
-		for {
-			select {
-			case _, ok := <-n:
-				if ok {
-					// this means an oom event was received, if it is !ok then
-					// the channel was closed because the container stopped and
-					// the cgroups no longer exist.
-					events <- &event{Type: "oom", ID: container.ID()}
-				} else {
-					n = nil
-				}
-			case s := <-stats:
-				events <- &event{Type: "stats", ID: container.ID(), Data: convertLibcontainerStats(s)}
-			}
-			if n == nil {
-				close(events)
-				break
-			}
+		for s := range stats {
+			events <- &event{Type: "stats", ID: container.ID(), Data: convertLibcontainerStats(s)}
 		}
 		group.Wait()
 		return nil

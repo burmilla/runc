@@ -720,6 +720,7 @@ func (c *linuxContainer) Checkpoint(criuOpts *CriuOpts) error {
 			case "bind":
 				c.addCriuDumpMount(req, m)
 				break
+			}
 		}
 
 		if err := c.addMaskPaths(req); err != nil {
@@ -862,6 +863,7 @@ func (c *linuxContainer) Restore(process *Process, criuOpts *CriuOpts) error {
 		case "bind":
 			c.addCriuRestoreMount(req, m)
 			break
+		}
 	}
 
 	if len(c.config.MaskPaths) > 0 {

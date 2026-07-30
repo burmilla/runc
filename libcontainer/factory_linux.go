@@ -13,10 +13,6 @@ import (
 	"syscall"
 
 	"github.com/docker/docker/pkg/mount"
-	"github.com/opencontainers/runc/libcontainer/cgroups"
-	"github.com/opencontainers/runc/libcontainer/cgroups/fs"
-	"github.com/opencontainers/runc/libcontainer/cgroups/rootless"
-	"github.com/opencontainers/runc/libcontainer/cgroups/systemd"
 	"github.com/opencontainers/runc/libcontainer/configs"
 	"github.com/opencontainers/runc/libcontainer/configs/validate"
 	"github.com/opencontainers/runc/libcontainer/utils"
@@ -49,42 +45,19 @@ func InitArgs(args ...string) func(*LinuxFactory) error {
 	}
 }
 
-// SystemdCgroups is an options func to configure a LinuxFactory to return
-// containers that use systemd to create and manage cgroups.
+// SystemdCgroups, Cgroupfs and RootlessCgroups are kept as no-op options
+// for API compatibility. This build of runc has no cgroups dependency:
+// containers run without any resource limits and never touch the cgroup
+// filesystem.
 func SystemdCgroups(l *LinuxFactory) error {
-	l.NewCgroupsManager = func(config *configs.Cgroup, paths map[string]string) cgroups.Manager {
-		return &systemd.Manager{
-			Cgroups: config,
-			Paths:   paths,
-		}
-	}
 	return nil
 }
 
-// Cgroupfs is an options func to configure a LinuxFactory to return
-// containers that use the native cgroups filesystem implementation to
-// create and manage cgroups.
 func Cgroupfs(l *LinuxFactory) error {
-	l.NewCgroupsManager = func(config *configs.Cgroup, paths map[string]string) cgroups.Manager {
-		return &fs.Manager{
-			Cgroups: config,
-			Paths:   paths,
-		}
-	}
 	return nil
 }
 
-// RootlessCgroups is an options func to configure a LinuxFactory to
-// return containers that use the "rootless" cgroup manager, which will
-// fail to do any operations not possible to do with an unprivileged user.
-// It should only be used in conjunction with rootless containers.
 func RootlessCgroups(l *LinuxFactory) error {
-	l.NewCgroupsManager = func(config *configs.Cgroup, paths map[string]string) cgroups.Manager {
-		return &rootless.Manager{
-			Cgroups: config,
-			Paths:   paths,
-		}
-	}
 	return nil
 }
 
@@ -125,7 +98,6 @@ func New(root string, options ...func(*LinuxFactory) error) (Factory, error) {
 		Validator: validate.New(),
 		CriuPath:  "criu",
 	}
-	Cgroupfs(l)
 	for _, opt := range options {
 		if err := opt(l); err != nil {
 			return nil, err
@@ -149,9 +121,6 @@ type LinuxFactory struct {
 
 	// Validator provides validation to container configurations.
 	Validator validate.Validator
-
-	// NewCgroupsManager returns an initialized cgroups manager for a single container.
-	NewCgroupsManager func(config *configs.Cgroup, paths map[string]string) cgroups.Manager
 }
 
 func (l *LinuxFactory) Create(id string, config *configs.Config) (Container, error) {
@@ -184,16 +153,12 @@ func (l *LinuxFactory) Create(id string, config *configs.Config) (Container, err
 	if err := os.Chown(containerRoot, uid, gid); err != nil {
 		return nil, newGenericError(err, SystemError)
 	}
-	if config.Rootless {
-		RootlessCgroups(l)
-	}
 	c := &linuxContainer{
-		id:            id,
-		root:          containerRoot,
-		config:        config,
-		initArgs:      l.InitArgs,
-		criuPath:      l.CriuPath,
-		cgroupManager: l.NewCgroupsManager(config.Cgroups, nil),
+		id:       id,
+		root:     containerRoot,
+		config:   config,
+		initArgs: l.InitArgs,
+		criuPath: l.CriuPath,
 	}
 	c.state = &stoppedState{c: c}
 	return c, nil
@@ -213,10 +178,6 @@ func (l *LinuxFactory) Load(id string) (Container, error) {
 		processStartTime: state.InitProcessStartTime,
 		fds:              state.ExternalDescriptors,
 	}
-	// We have to use the RootlessManager.
-	if state.Rootless {
-		RootlessCgroups(l)
-	}
 	c := &linuxContainer{
 		initProcess:          r,
 		initProcessStartTime: state.InitProcessStartTime,
@@ -224,7 +185,6 @@ func (l *LinuxFactory) Load(id string) (Container, error) {
 		config:               &state.Config,
 		initArgs:             l.InitArgs,
 		criuPath:             l.CriuPath,
-		cgroupManager:        l.NewCgroupsManager(state.Config.Cgroups, state.CgroupPaths),
 		root:                 containerRoot,
 		created:              state.Created,
 	}

@@ -7,48 +7,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/opencontainers/runc/libcontainer/cgroups"
 	"github.com/opencontainers/runc/libcontainer/configs"
 )
-
-type mockCgroupManager struct {
-	pids    []int
-	allPids []int
-	stats   *cgroups.Stats
-	paths   map[string]string
-}
-
-func (m *mockCgroupManager) GetPids() ([]int, error) {
-	return m.pids, nil
-}
-
-func (m *mockCgroupManager) GetAllPids() ([]int, error) {
-	return m.allPids, nil
-}
-
-func (m *mockCgroupManager) GetStats() (*cgroups.Stats, error) {
-	return m.stats, nil
-}
-
-func (m *mockCgroupManager) Apply(pid int) error {
-	return nil
-}
-
-func (m *mockCgroupManager) Set(container *configs.Config) error {
-	return nil
-}
-
-func (m *mockCgroupManager) Destroy() error {
-	return nil
-}
-
-func (m *mockCgroupManager) GetPaths() map[string]string {
-	return m.paths
-}
-
-func (m *mockCgroupManager) Freeze(state configs.FreezerState) error {
-	return nil
-}
 
 type mockProcess struct {
 	_pid    int
@@ -88,18 +48,15 @@ func (m *mockProcess) setExternalDescriptors(newFds []string) {
 
 func TestGetContainerPids(t *testing.T) {
 	container := &linuxContainer{
-		id:            "myid",
-		config:        &configs.Config{},
-		cgroupManager: &mockCgroupManager{allPids: []int{1, 2, 3}},
+		id:     "myid",
+		config: &configs.Config{},
 	}
 	pids, err := container.Processes()
 	if err != nil {
 		t.Fatal(err)
 	}
-	for i, expected := range []int{1, 2, 3} {
-		if pids[i] != expected {
-			t.Fatalf("expected pid %d but received %d", expected, pids[i])
-		}
+	if len(pids) != 0 {
+		t.Fatalf("expected no pids without cgroups but received %v", pids)
 	}
 }
 
@@ -107,33 +64,19 @@ func TestGetContainerStats(t *testing.T) {
 	container := &linuxContainer{
 		id:     "myid",
 		config: &configs.Config{},
-		cgroupManager: &mockCgroupManager{
-			pids: []int{1, 2, 3},
-			stats: &cgroups.Stats{
-				MemoryStats: cgroups.MemoryStats{
-					Usage: cgroups.MemoryData{
-						Usage: 1024,
-					},
-				},
-			},
-		},
 	}
 	stats, err := container.Stats()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if stats.CgroupStats == nil {
-		t.Fatal("cgroup stats are nil")
-	}
-	if stats.CgroupStats.MemoryStats.Usage.Usage != 1024 {
-		t.Fatalf("expected memory usage 1024 but recevied %d", stats.CgroupStats.MemoryStats.Usage.Usage)
+	if stats.CgroupStats != nil {
+		t.Fatal("cgroup stats should be nil since this build has no cgroups dependency")
 	}
 }
 
 func TestGetContainerState(t *testing.T) {
 	var (
 		pid                 = os.Getpid()
-		expectedMemoryPath  = "/sys/fs/cgroup/memory/myid"
 		expectedNetworkPath = "/networks/fd"
 	)
 	container := &linuxContainer{
@@ -152,19 +95,6 @@ func TestGetContainerState(t *testing.T) {
 			_pid:    pid,
 			started: "010",
 		},
-		cgroupManager: &mockCgroupManager{
-			pids: []int{1, 2, 3},
-			stats: &cgroups.Stats{
-				MemoryStats: cgroups.MemoryStats{
-					Usage: cgroups.MemoryData{
-						Usage: 1024,
-					},
-				},
-			},
-			paths: map[string]string{
-				"memory": expectedMemoryPath,
-			},
-		},
 	}
 	container.state = &createdState{c: container}
 	state, err := container.State()
@@ -176,13 +106,6 @@ func TestGetContainerState(t *testing.T) {
 	}
 	if state.InitProcessStartTime != "010" {
 		t.Fatalf("expected process start time 010 but received %s", state.InitProcessStartTime)
-	}
-	paths := state.CgroupPaths
-	if paths == nil {
-		t.Fatal("cgroup paths should not be nil")
-	}
-	if memPath := paths["memory"]; memPath != expectedMemoryPath {
-		t.Fatalf("expected memory path %q but received %q", expectedMemoryPath, memPath)
 	}
 	for _, ns := range container.config.Namespaces {
 		path := state.NamespacePaths[ns.Type]

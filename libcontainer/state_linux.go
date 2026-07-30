@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"syscall"
 
-	"github.com/Sirupsen/logrus"
 	"github.com/opencontainers/runc/libcontainer/configs"
 	"github.com/opencontainers/runc/libcontainer/utils"
 )
@@ -38,12 +37,11 @@ type containerState interface {
 }
 
 func destroy(c *linuxContainer) error {
-	if !c.config.Namespaces.Contains(configs.NEWPID) {
-		if err := signalAllProcesses(c.cgroupManager, syscall.SIGKILL); err != nil {
-			logrus.Warn(err)
-		}
-	}
-	err := c.cgroupManager.Destroy()
+	// Without cgroups, there is no reliable way to enumerate and signal
+	// all processes descended from the container's init process when it
+	// doesn't have its own PID namespace, so only the init process itself
+	// is targeted.
+	var err error
 	if rerr := os.RemoveAll(c.root); err == nil {
 		err = rerr
 	}
@@ -187,9 +185,6 @@ func (p *pausedState) destroy() error {
 		return err
 	}
 	if t != Running && t != Created {
-		if err := p.c.cgroupManager.Freeze(configs.Thawed); err != nil {
-			return err
-		}
 		return destroy(p.c)
 	}
 	return newGenericError(fmt.Errorf("container is paused"), ContainerPaused)
