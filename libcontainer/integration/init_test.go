@@ -7,7 +7,6 @@ import (
 
 	"github.com/Sirupsen/logrus"
 	"github.com/opencontainers/runc/libcontainer"
-	"github.com/opencontainers/runc/libcontainer/cgroups/systemd"
 	_ "github.com/opencontainers/runc/libcontainer/nsenter"
 )
 
@@ -28,10 +27,7 @@ func init() {
 	}
 }
 
-var (
-	factory        libcontainer.Factory
-	systemdFactory libcontainer.Factory
-)
+var factory libcontainer.Factory
 
 func TestMain(m *testing.M) {
 	var (
@@ -42,17 +38,10 @@ func TestMain(m *testing.M) {
 	logrus.SetOutput(os.Stderr)
 	logrus.SetLevel(logrus.InfoLevel)
 
-	factory, err = libcontainer.New("/run/libctTests", libcontainer.Cgroupfs)
+	factory, err = libcontainer.New("/run/libctTests")
 	if err != nil {
 		logrus.Error(err)
 		os.Exit(1)
-	}
-	if systemd.UseSystemd() {
-		systemdFactory, err = libcontainer.New("/run/libctTests", libcontainer.SystemdCgroups)
-		if err != nil {
-			logrus.Error(err)
-			os.Exit(1)
-		}
 	}
 
 	ret = m.Run()

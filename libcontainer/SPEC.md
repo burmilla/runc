@@ -16,7 +16,6 @@ with a strong security configuration.
 
 Minimum requirements:
 * Kernel version - 3.10 recommended 2.6.2x minimum(with backported patches)
-* Mounted cgroups with each subsystem in its own hierarchy
 
 
 ### Namespaces
@@ -127,32 +126,9 @@ The `umask` is set back to `0022` after the filesystem setup has been completed.
 
 ### Resources
 
-Cgroups are used to handle resource allocation for containers.  This includes
-system resources like cpu, memory, and device access.
-
-| Subsystem  | Enabled |
-| ---------- | ------- |
-| devices    | 1       |
-| memory     | 1       |
-| cpu        | 1       |
-| cpuacct    | 1       |
-| cpuset     | 1       |
-| blkio      | 1       |
-| perf_event | 1       |
-| freezer    | 1       |
-| hugetlb    | 1       |
-| pids       | 1       |
-
-
-All cgroup subsystem are joined so that statistics can be collected from
-each of the subsystems.  Freezer does not expose any stats but is joined
-so that containers can be paused and resumed.
-
-The parent process of the container's init must place the init pid inside
-the correct cgroups before the initialization begins.  This is done so
-that no processes or threads escape the cgroups.  This sync is 
-done via a pipe ( specified in the runtime section below ) that the container's
-init process will block waiting for the parent to finish setup.
+This build has no cgroups dependency: containers run without any resource
+limits and are not placed into a cgroup hierarchy. Resource allocation
+(cpu, memory, device access, etc.) is not enforced.
 
 ### Security 
 
@@ -244,8 +220,8 @@ During container creation the parent process needs to talk to the container's in
 process and have a form of synchronization.  This is accomplished by creating
 a pipe that is passed to the container's init.  When the init process first spawns 
 it will block on its side of the pipe until the parent closes its side.  This
-allows the parent to have time to set the new process inside a cgroup hierarchy 
-and/or write any uid/gid mappings required for user namespaces.  
+allows the parent to have time to write any uid/gid mappings required for
+user namespaces.  
 The pipe is passed to the init process via FD 3.
 
 The application consuming libcontainer should be compiled statically.  libcontainer
@@ -321,14 +297,3 @@ the container is unpaused.  The started process will only run when the container
 primary process (PID 1) is running, and will not be restarted when the container
 is restarted.
 
-#### Planned additions
-
-The started process will have its own cgroups nested inside the container's
-cgroups. This is used for process tracking and optionally resource allocation
-handling for the new process. Freezer cgroup is required, the rest of the cgroups
-are optional. The process executor must place its pid inside the correct
-cgroups before starting the process. This is done so that no child processes or
-threads can escape the cgroups.
-
-When the process is stopped, the process executor will try (in a best-effort way)
-to stop all its children and remove the sub-cgroups.

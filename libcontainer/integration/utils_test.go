@@ -123,11 +123,7 @@ func newContainer(config *configs.Config) (libcontainer.Container, error) {
 }
 
 func newContainerWithName(name string, config *configs.Config) (libcontainer.Container, error) {
-	f := factory
-	if config.Cgroups != nil && config.Cgroups.Parent == "system.slice" {
-		f = systemdFactory
-	}
-	return f.Create(name, config)
+	return factory.Create(name, config)
 }
 
 // runContainer runs the container with the specific config and arguments

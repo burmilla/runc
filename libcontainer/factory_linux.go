@@ -45,22 +45,6 @@ func InitArgs(args ...string) func(*LinuxFactory) error {
 	}
 }
 
-// SystemdCgroups, Cgroupfs and RootlessCgroups are kept as no-op options
-// for API compatibility. This build of runc has no cgroups dependency:
-// containers run without any resource limits and never touch the cgroup
-// filesystem.
-func SystemdCgroups(l *LinuxFactory) error {
-	return nil
-}
-
-func Cgroupfs(l *LinuxFactory) error {
-	return nil
-}
-
-func RootlessCgroups(l *LinuxFactory) error {
-	return nil
-}
-
 // TmpfsRoot is an option func to mount LinuxFactory.Root to tmpfs.
 func TmpfsRoot(l *LinuxFactory) error {
 	mounted, err := mount.Mounted(l.Root)

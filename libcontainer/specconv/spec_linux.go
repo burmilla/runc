@@ -44,7 +44,7 @@ type CreateOpts struct {
 }
 
 // CreateLibcontainerConfig creates a new libcontainer configuration from a
-// given specification and a cgroup name
+// given specification
 func CreateLibcontainerConfig(opts *CreateOpts) (*configs.Config, error) {
 	// runc's cwd will always be the bundle path
 	rcwd, err := os.Getwd()

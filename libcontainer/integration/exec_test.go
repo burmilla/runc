@@ -15,7 +15,6 @@ import (
 	"testing"
 
 	"github.com/opencontainers/runc/libcontainer"
-	"github.com/opencontainers/runc/libcontainer/cgroups/systemd"
 	"github.com/opencontainers/runc/libcontainer/configs"
 )
 
@@ -475,7 +474,7 @@ func TestAdditionalGroups(t *testing.T) {
 
 	config := newTemplateConfig(rootfs)
 
-	factory, err := libcontainer.New(root, libcontainer.Cgroupfs)
+	factory, err := libcontainer.New(root)
 	ok(t, err)
 
 	container, err := factory.Create("test", config)
@@ -510,17 +509,6 @@ func TestAdditionalGroups(t *testing.T) {
 }
 
 func TestFreeze(t *testing.T) {
-	testFreeze(t, false)
-}
-
-func TestSystemdFreeze(t *testing.T) {
-	if !systemd.UseSystemd() {
-		t.Skip("Systemd is unsupported")
-	}
-	testFreeze(t, true)
-}
-
-func testFreeze(t *testing.T, systemd bool) {
 	if testing.Short() {
 		return
 	}
@@ -533,12 +521,8 @@ func testFreeze(t *testing.T, systemd bool) {
 	defer remove(rootfs)
 
 	config := newTemplateConfig(rootfs)
-	f := factory
-	if systemd {
-		f = systemdFactory
-	}
 
-	container, err := f.Create("test", config)
+	container, err := factory.Create("test", config)
 	ok(t, err)
 	defer container.Destroy()
 
@@ -568,151 +552,6 @@ func testFreeze(t *testing.T, systemd bool) {
 
 	stdinW.Close()
 	waitProcess(pconfig, t)
-}
-
-func TestCpuShares(t *testing.T) {
-	testCpuShares(t, false)
-}
-
-func TestCpuSharesSystemd(t *testing.T) {
-	if !systemd.UseSystemd() {
-		t.Skip("Systemd is unsupported")
-	}
-	testCpuShares(t, true)
-}
-
-func testCpuShares(t *testing.T, systemd bool) {
-	if testing.Short() {
-		return
-	}
-	rootfs, err := newRootfs()
-	ok(t, err)
-	defer remove(rootfs)
-
-	config := newTemplateConfig(rootfs)
-	if systemd {
-		config.Cgroups.Parent = "system.slice"
-	}
-	config.Cgroups.Resources.CpuShares = 1
-
-	_, _, err = runContainer(config, "", "ps")
-	if err == nil {
-		t.Fatalf("runContainer should failed with invalid CpuShares")
-	}
-}
-
-func TestPids(t *testing.T) {
-	testPids(t, false)
-}
-
-func TestPidsSystemd(t *testing.T) {
-	if !systemd.UseSystemd() {
-		t.Skip("Systemd is unsupported")
-	}
-	testPids(t, true)
-}
-
-func testPids(t *testing.T, systemd bool) {
-	if testing.Short() {
-		return
-	}
-
-	rootfs, err := newRootfs()
-	ok(t, err)
-	defer remove(rootfs)
-
-	config := newTemplateConfig(rootfs)
-	if systemd {
-		config.Cgroups.Parent = "system.slice"
-	}
-	config.Cgroups.Resources.PidsLimit = -1
-
-	// Running multiple processes.
-	_, ret, err := runContainer(config, "", "/bin/sh", "-c", "/bin/true | /bin/true | /bin/true | /bin/true")
-	if err != nil && strings.Contains(err.Error(), "no such directory for pids.max") {
-		t.Skip("PIDs cgroup is unsupported")
-	}
-	ok(t, err)
-
-	if ret != 0 {
-		t.Fatalf("expected fork() to succeed with no pids limit")
-	}
-
-	// Enforce a permissive limit. This needs to be fairly hand-wavey due to the
-	// issues with running Go binaries with pids restrictions (see below).
-	config.Cgroups.Resources.PidsLimit = 64
-	_, ret, err = runContainer(config, "", "/bin/sh", "-c", `
-	/bin/true | /bin/true | /bin/true | /bin/true | /bin/true | /bin/true | bin/true | /bin/true |
-	/bin/true | /bin/true | /bin/true | /bin/true | /bin/true | /bin/true | bin/true | /bin/true |
-	/bin/true | /bin/true | /bin/true | /bin/true | /bin/true | /bin/true | bin/true | /bin/true |
-	/bin/true | /bin/true | /bin/true | /bin/true | /bin/true | /bin/true | bin/true | /bin/true`)
-	if err != nil && strings.Contains(err.Error(), "no such directory for pids.max") {
-		t.Skip("PIDs cgroup is unsupported")
-	}
-	ok(t, err)
-
-	if ret != 0 {
-		t.Fatalf("expected fork() to succeed with permissive pids limit")
-	}
-
-	// Enforce a restrictive limit. 64 * /bin/true + 1 * shell should cause this
-	// to fail reliability.
-	config.Cgroups.Resources.PidsLimit = 64
-	out, _, err := runContainer(config, "", "/bin/sh", "-c", `
-	/bin/true | /bin/true | /bin/true | /bin/true | /bin/true | /bin/true | bin/true | /bin/true |
-	/bin/true | /bin/true | /bin/true | /bin/true | /bin/true | /bin/true | bin/true | /bin/true |
-	/bin/true | /bin/true | /bin/true | /bin/true | /bin/true | /bin/true | bin/true | /bin/true |
-	/bin/true | /bin/true | /bin/true | /bin/true | /bin/true | /bin/true | bin/true | /bin/true |
-	/bin/true | /bin/true | /bin/true | /bin/true | /bin/true | /bin/true | bin/true | /bin/true |
-	/bin/true | /bin/true | /bin/true | /bin/true | /bin/true | /bin/true | bin/true | /bin/true |
-	/bin/true | /bin/true | /bin/true | /bin/true | /bin/true | /bin/true | bin/true | /bin/true |
-	/bin/true | /bin/true | /bin/true | /bin/true | /bin/true | /bin/true | bin/true | /bin/true`)
-	if err != nil && strings.Contains(err.Error(), "no such directory for pids.max") {
-		t.Skip("PIDs cgroup is unsupported")
-	}
-	if err != nil && !strings.Contains(out.String(), "sh: can't fork") {
-		ok(t, err)
-	}
-
-	if err == nil {
-		t.Fatalf("expected fork() to fail with restrictive pids limit")
-	}
-
-	// Minimal restrictions are not really supported, due to quirks in using Go
-	// due to the fact that it spawns random processes. While we do our best with
-	// late setting cgroup values, it's just too unreliable with very small pids.max.
-	// As such, we don't test that case. YMMV.
-}
-
-func TestRunWithKernelMemory(t *testing.T) {
-	testRunWithKernelMemory(t, false)
-}
-
-func TestRunWithKernelMemorySystemd(t *testing.T) {
-	if !systemd.UseSystemd() {
-		t.Skip("Systemd is unsupported")
-	}
-	testRunWithKernelMemory(t, true)
-}
-
-func testRunWithKernelMemory(t *testing.T, systemd bool) {
-	if testing.Short() {
-		return
-	}
-	rootfs, err := newRootfs()
-	ok(t, err)
-	defer remove(rootfs)
-
-	config := newTemplateConfig(rootfs)
-	if systemd {
-		config.Cgroups.Parent = "system.slice"
-	}
-	config.Cgroups.Resources.KernelMemory = 52428800
-
-	_, _, err = runContainer(config, "", "ps")
-	if err != nil {
-		t.Fatalf("runContainer failed with kernel memory limit: %v", err)
-	}
 }
 
 func TestContainerState(t *testing.T) {
@@ -957,104 +796,6 @@ func TestSysctl(t *testing.T) {
 	}
 }
 
-func TestMountCgroupRO(t *testing.T) {
-	if testing.Short() {
-		return
-	}
-	rootfs, err := newRootfs()
-	ok(t, err)
-	defer remove(rootfs)
-	config := newTemplateConfig(rootfs)
-
-	config.Mounts = append(config.Mounts, &configs.Mount{
-		Destination: "/sys/fs/cgroup",
-		Device:      "cgroup",
-		Flags:       defaultMountFlags | syscall.MS_RDONLY,
-	})
-
-	buffers, exitCode, err := runContainer(config, "", "mount")
-	if err != nil {
-		t.Fatalf("%s: %s", buffers, err)
-	}
-	if exitCode != 0 {
-		t.Fatalf("exit code not 0. code %d stderr %q", exitCode, buffers.Stderr)
-	}
-	mountInfo := buffers.Stdout.String()
-	lines := strings.Split(mountInfo, "\n")
-	for _, l := range lines {
-		if strings.HasPrefix(l, "tmpfs on /sys/fs/cgroup") {
-			if !strings.Contains(l, "ro") ||
-				!strings.Contains(l, "nosuid") ||
-				!strings.Contains(l, "nodev") ||
-				!strings.Contains(l, "noexec") {
-				t.Fatalf("Mode expected to contain 'ro,nosuid,nodev,noexec': %s", l)
-			}
-			if !strings.Contains(l, "mode=755") {
-				t.Fatalf("Mode expected to contain 'mode=755': %s", l)
-			}
-			continue
-		}
-		if !strings.HasPrefix(l, "cgroup") {
-			continue
-		}
-		if !strings.Contains(l, "ro") ||
-			!strings.Contains(l, "nosuid") ||
-			!strings.Contains(l, "nodev") ||
-			!strings.Contains(l, "noexec") {
-			t.Fatalf("Mode expected to contain 'ro,nosuid,nodev,noexec': %s", l)
-		}
-	}
-}
-
-func TestMountCgroupRW(t *testing.T) {
-	if testing.Short() {
-		return
-	}
-	rootfs, err := newRootfs()
-	ok(t, err)
-	defer remove(rootfs)
-	config := newTemplateConfig(rootfs)
-
-	config.Mounts = append(config.Mounts, &configs.Mount{
-		Destination: "/sys/fs/cgroup",
-		Device:      "cgroup",
-		Flags:       defaultMountFlags,
-	})
-
-	buffers, exitCode, err := runContainer(config, "", "mount")
-	if err != nil {
-		t.Fatalf("%s: %s", buffers, err)
-	}
-	if exitCode != 0 {
-		t.Fatalf("exit code not 0. code %d stderr %q", exitCode, buffers.Stderr)
-	}
-	mountInfo := buffers.Stdout.String()
-	lines := strings.Split(mountInfo, "\n")
-	for _, l := range lines {
-		if strings.HasPrefix(l, "tmpfs on /sys/fs/cgroup") {
-			if !strings.Contains(l, "rw") ||
-				!strings.Contains(l, "nosuid") ||
-				!strings.Contains(l, "nodev") ||
-				!strings.Contains(l, "noexec") {
-				t.Fatalf("Mode expected to contain 'rw,nosuid,nodev,noexec': %s", l)
-			}
-			if !strings.Contains(l, "mode=755") {
-				t.Fatalf("Mode expected to contain 'mode=755': %s", l)
-			}
-			continue
-		}
-		if !strings.HasPrefix(l, "cgroup") {
-			continue
-		}
-		if !strings.Contains(l, "rw") ||
-			!strings.Contains(l, "nosuid") ||
-			!strings.Contains(l, "nodev") ||
-			!strings.Contains(l, "noexec") {
-			t.Fatalf("Mode expected to contain 'rw,nosuid,nodev,noexec': %s", l)
-		}
-	}
-}
-
 func TestOomScoreAdj(t *testing.T) {
 	if testing.Short() {
 		return
@@ -1070,7 +811,7 @@ func TestOomScoreAdj(t *testing.T) {
 	config := newTemplateConfig(rootfs)
 	config.OomScoreAdj = 200
 
-	factory, err := libcontainer.New(root, libcontainer.Cgroupfs)
+	factory, err := libcontainer.New(root)
 	ok(t, err)
 
 	container, err := factory.Create("test", config)
@@ -1541,10 +1282,9 @@ func TestInitJoinPID(t *testing.T) {
 	ok(t, err)
 	pidns1 := state1.NamespacePaths[configs.NEWPID]
 
-	// Run a container inside the existing pidns but with different cgroups
+	// Run a container inside the existing pidns
 	config2 := newTemplateConfig(rootfs)
 	config2.Namespaces.Add(configs.NEWPID, pidns1)
-	config2.Cgroups.Path = "integration/test2"
 	container2, err := newContainerWithName("testCT2", config2)
 	ok(t, err)
 	defer container2.Destroy()
@@ -1647,7 +1387,7 @@ func TestInitJoinNetworkAndUser(t *testing.T) {
 	netns1 := state1.NamespacePaths[configs.NEWNET]
 	userns1 := state1.NamespacePaths[configs.NEWUSER]
 
-	// Run a container inside the existing pidns but with different cgroups
+	// Run a container inside the existing pidns
 	rootfs2, err := newRootfs()
 	ok(t, err)
 	defer remove(rootfs2)
@@ -1657,7 +1397,6 @@ func TestInitJoinNetworkAndUser(t *testing.T) {
 	config2.GidMappings = []configs.IDMap{{HostID: 0, ContainerID: 0, Size: 1000}}
 	config2.Namespaces.Add(configs.NEWNET, netns1)
 	config2.Namespaces.Add(configs.NEWUSER, userns1)
-	config2.Cgroups.Path = "integration/test2"
 	container2, err := newContainerWithName("testCT2", config2)
 	ok(t, err)
 	defer container2.Destroy()
@@ -1723,7 +1462,7 @@ func TestTmpfsCopyUp(t *testing.T) {
 		Extensions:  configs.EXT_COPYUP,
 	})
 
-	factory, err := libcontainer.New(root, libcontainer.Cgroupfs)
+	factory, err := libcontainer.New(root)
 	ok(t, err)
 
 	container, err := factory.Create("test", config)

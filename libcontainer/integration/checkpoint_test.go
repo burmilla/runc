@@ -7,11 +7,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"testing"
 
 	"github.com/opencontainers/runc/libcontainer"
-	"github.com/opencontainers/runc/libcontainer/configs"
 )
 
 func showFile(t *testing.T, fname string) error {
@@ -56,13 +54,7 @@ func TestCheckpoint(t *testing.T) {
 
 	config := newTemplateConfig(rootfs)
 
-	config.Mounts = append(config.Mounts, &configs.Mount{
-		Destination: "/sys/fs/cgroup",
-		Device:      "cgroup",
-		Flags:       defaultMountFlags | syscall.MS_RDONLY,
-	})
-
-	factory, err := libcontainer.New(root, libcontainer.Cgroupfs)
+	factory, err := libcontainer.New(root)
 
 	if err != nil {
 		t.Fatal(err)

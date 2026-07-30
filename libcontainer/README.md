@@ -3,7 +3,7 @@
 [![GoDoc](https://godoc.org/github.com/opencontainers/runc/libcontainer?status.svg)](https://godoc.org/github.com/opencontainers/runc/libcontainer)
 
 Libcontainer provides a native Go implementation for creating containers
-with namespaces, cgroups, capabilities, and filesystem access controls.
+with namespaces, capabilities, and filesystem access controls.
 It allows you to manage the lifecycle of the container performing additional operations
 after the container is created.
 
@@ -45,7 +45,7 @@ Then to create a container you first have to initialize an instance of a factory
 that will handle the creation and initialization for a container.
 
 ```go
-factory, err := libcontainer.New("/var/lib/container", libcontainer.Cgroupfs, libcontainer.InitArgs(os.Args[0], "init"))
+factory, err := libcontainer.New("/var/lib/container", libcontainer.InitArgs(os.Args[0], "init"))
 if err != nil {
 	logrus.Fatal(err)
 	return
@@ -83,15 +83,6 @@ config := &configs.Config{
 		{Type: configs.NEWUSER},
 		{Type: configs.NEWNET},
 	}),
-	Cgroups: &configs.Cgroup{
-		Name:   "test-container",
-		Parent: "system",
-		Resources: &configs.Resources{
-			MemorySwappiness: nil,
-			AllowAllDevices:  nil,
-			AllowedDevices:   configs.DefaultAllowedDevices,
-		},
-	},
 	MaskPaths: []string{
 		"/proc/kcore",
 		"/sys/firmware",
