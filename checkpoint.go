@@ -32,7 +32,6 @@ checkpointed.`,
 		cli.StringFlag{Name: "page-server", Value: "", Usage: "ADDRESS:PORT of the page server"},
 		cli.BoolFlag{Name: "file-locks", Usage: "handle file locks, for safety"},
 		cli.BoolFlag{Name: "pre-dump", Usage: "dump container's memory information only, leave the container running after this"},
-		cli.StringFlag{Name: "manage-cgroups-mode", Value: "", Usage: "cgroups mode: 'soft' (default), 'full' and 'strict'"},
 		cli.StringSliceFlag{Name: "empty-ns", Usage: "create a namespace, but don't restore its properties"},
 	},
 	Action: func(context *cli.Context) error {
@@ -59,7 +58,6 @@ checkpointed.`,
 		options := criuOptions(context)
 		// these are the mandatory criu options for a container
 		setPageServer(context, options)
-		setManageCgroupsMode(context, options)
 		if err := setEmptyNsMask(context, options); err != nil {
 			return err
 		}
@@ -93,21 +91,6 @@ func setPageServer(context *cli.Context, options *libcontainer.CriuOpts) {
 		options.PageServer = libcontainer.CriuPageServerInfo{
 			Address: addressPort[0],
 			Port:    int32(portInt),
-		}
-	}
-}
-
-func setManageCgroupsMode(context *cli.Context, options *libcontainer.CriuOpts) {
-	if cgOpt := context.String("manage-cgroups-mode"); cgOpt != "" {
-		switch cgOpt {
-		case "soft":
-			options.ManageCgroupsMode = libcontainer.CRIU_CG_MODE_SOFT
-		case "full":
-			options.ManageCgroupsMode = libcontainer.CRIU_CG_MODE_FULL
-		case "strict":
-			options.ManageCgroupsMode = libcontainer.CRIU_CG_MODE_STRICT
-		default:
-			fatal(fmt.Errorf("Invalid manage cgroups mode"))
 		}
 	}
 }

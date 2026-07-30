@@ -52,11 +52,6 @@ using the runc checkpoint command.`,
 			Usage: "handle file locks, for safety",
 		},
 		cli.StringFlag{
-			Name:  "manage-cgroups-mode",
-			Value: "",
-			Usage: "cgroups mode: 'soft' (default), 'full' and 'strict'",
-		},
-		cli.StringFlag{
 			Name:  "bundle, b",
 			Value: "",
 			Usage: "path to the root of the bundle directory",
@@ -111,10 +106,8 @@ using the runc checkpoint command.`,
 			return err
 		}
 		config, err := specconv.CreateLibcontainerConfig(&specconv.CreateOpts{
-			CgroupName:       id,
-			UseSystemdCgroup: context.GlobalBool("systemd-cgroup"),
-			NoPivotRoot:      context.Bool("no-pivot"),
-			Spec:             spec,
+			NoPivotRoot: context.Bool("no-pivot"),
+			Spec:        spec,
 		})
 		if err != nil {
 			return err
@@ -153,8 +146,6 @@ func restoreContainer(context *cli.Context, spec *specs.Spec, config *configs.Co
 	if status == libcontainer.Running {
 		fatalf("Container with id %s already running", id)
 	}
-
-	setManageCgroupsMode(context, options)
 
 	if err = setEmptyNsMask(context, options); err != nil {
 		return -1, err
