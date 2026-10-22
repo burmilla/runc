@@ -1,3 +1,4 @@
+//go:build linux
 // +build linux
 
 package libcontainer
@@ -6,11 +7,10 @@ import "testing"
 
 func TestStateStatus(t *testing.T) {
 	states := map[containerState]Status{
-		&stoppedState{}:  Stopped,
-		&runningState{}:  Running,
-		&restoredState{}: Running,
-		&pausedState{}:   Paused,
-		&createdState{}:  Created,
+		&stoppedState{}: Stopped,
+		&runningState{}: Running,
+		&pausedState{}:  Paused,
+		&createdState{}: Created,
 	}
 	for s, status := range states {
 		if s.status() != status {
@@ -29,7 +29,6 @@ func TestStoppedStateTransition(t *testing.T) {
 	valid := []containerState{
 		&stoppedState{},
 		&runningState{},
-		&restoredState{},
 	}
 	for _, v := range valid {
 		if err := s.transition(v); err != nil {
@@ -56,25 +55,5 @@ func TestPausedStateTransition(t *testing.T) {
 		if err := s.transition(v); err != nil {
 			t.Fatal(err)
 		}
-	}
-}
-
-func TestRestoredStateTransition(t *testing.T) {
-	s := &restoredState{c: &linuxContainer{}}
-	valid := []containerState{
-		&stoppedState{},
-		&runningState{},
-	}
-	for _, v := range valid {
-		if err := s.transition(v); err != nil {
-			t.Fatal(err)
-		}
-	}
-	err := s.transition(&createdState{})
-	if err == nil {
-		t.Fatal("transition to created state should fail")
-	}
-	if !isStateTransitionError(err) {
-		t.Fatal("expected stateTransitionError")
 	}
 }

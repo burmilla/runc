@@ -59,15 +59,6 @@ func TmpfsRoot(l *LinuxFactory) error {
 	return nil
 }
 
-// CriuPath returns an option func to configure a LinuxFactory with the
-// provided criupath
-func CriuPath(criupath string) func(*LinuxFactory) error {
-	return func(l *LinuxFactory) error {
-		l.CriuPath = criupath
-		return nil
-	}
-}
-
 // New returns a linux based container factory based in the root directory and
 // configures the factory with the provided option funcs.
 func New(root string, options ...func(*LinuxFactory) error) (Factory, error) {
@@ -80,7 +71,6 @@ func New(root string, options ...func(*LinuxFactory) error) (Factory, error) {
 		Root:      root,
 		InitArgs:  []string{"/proc/self/exe", "init"},
 		Validator: validate.New(),
-		CriuPath:  "criu",
 	}
 	for _, opt := range options {
 		if err := opt(l); err != nil {
@@ -98,10 +88,6 @@ type LinuxFactory struct {
 	// InitArgs are arguments for calling the init responsibilities for spawning
 	// a container.
 	InitArgs []string
-
-	// CriuPath is the path to the criu binary used for checkpoint and restore of
-	// containers.
-	CriuPath string
 
 	// Validator provides validation to container configurations.
 	Validator validate.Validator
@@ -142,7 +128,6 @@ func (l *LinuxFactory) Create(id string, config *configs.Config) (Container, err
 		root:     containerRoot,
 		config:   config,
 		initArgs: l.InitArgs,
-		criuPath: l.CriuPath,
 	}
 	c.state = &stoppedState{c: c}
 	return c, nil
@@ -168,7 +153,6 @@ func (l *LinuxFactory) Load(id string) (Container, error) {
 		id:                   id,
 		config:               &state.Config,
 		initArgs:             l.InitArgs,
-		criuPath:             l.CriuPath,
 		root:                 containerRoot,
 		created:              state.Created,
 	}

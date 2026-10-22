@@ -32,7 +32,7 @@ func loadFactory(context *cli.Context) (libcontainer.Factory, error) {
 	if err != nil {
 		return nil, err
 	}
-	return libcontainer.New(abs, libcontainer.CriuPath(context.GlobalString("criu")))
+	return libcontainer.New(abs)
 }
 
 // getContainer returns the specified container instance by loading it from state

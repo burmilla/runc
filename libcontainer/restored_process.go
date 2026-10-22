@@ -1,3 +1,4 @@
+//go:build linux
 // +build linux
 
 package libcontainer
@@ -5,76 +6,7 @@ package libcontainer
 import (
 	"fmt"
 	"os"
-
-	"github.com/opencontainers/runc/libcontainer/system"
 )
-
-func newRestoredProcess(pid int, fds []string) (*restoredProcess, error) {
-	var (
-		err error
-	)
-	proc, err := os.FindProcess(pid)
-	if err != nil {
-		return nil, err
-	}
-	started, err := system.GetProcessStartTime(pid)
-	if err != nil {
-		return nil, err
-	}
-	return &restoredProcess{
-		proc:             proc,
-		processStartTime: started,
-		fds:              fds,
-	}, nil
-}
-
-type restoredProcess struct {
-	proc             *os.Process
-	processStartTime string
-	fds              []string
-}
-
-func (p *restoredProcess) start() error {
-	return newGenericError(fmt.Errorf("restored process cannot be started"), SystemError)
-}
-
-func (p *restoredProcess) pid() int {
-	return p.proc.Pid
-}
-
-func (p *restoredProcess) terminate() error {
-	err := p.proc.Kill()
-	if _, werr := p.wait(); err == nil {
-		err = werr
-	}
-	return err
-}
-
-func (p *restoredProcess) wait() (*os.ProcessState, error) {
-	// TODO: how do we wait on the actual process?
-	// maybe use --exec-cmd in criu
-	st, err := p.proc.Wait()
-	if err != nil {
-		return nil, err
-	}
-	return st, nil
-}
-
-func (p *restoredProcess) startTime() (string, error) {
-	return p.processStartTime, nil
-}
-
-func (p *restoredProcess) signal(s os.Signal) error {
-	return p.proc.Signal(s)
-}
-
-func (p *restoredProcess) externalDescriptors() []string {
-	return p.fds
-}
-
-func (p *restoredProcess) setExternalDescriptors(newFds []string) {
-	p.fds = newFds
-}
 
 // nonChildProcess represents a process where the calling process is not
 // the parent process.  This process is created when a factory loads a container from

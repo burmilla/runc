@@ -1,3 +1,4 @@
+//go:build linux
 // +build linux
 
 package libcontainer
@@ -5,7 +6,6 @@ package libcontainer
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"syscall"
 
 	"github.com/opencontainers/runc/libcontainer/configs"
@@ -80,7 +80,7 @@ func (b *stoppedState) status() Status {
 
 func (b *stoppedState) transition(s containerState) error {
 	switch s.(type) {
-	case *runningState, *restoredState:
+	case *runningState:
 		b.c.state = s
 		return nil
 	case *stoppedState:
@@ -188,34 +188,6 @@ func (p *pausedState) destroy() error {
 		return destroy(p.c)
 	}
 	return newGenericError(fmt.Errorf("container is paused"), ContainerPaused)
-}
-
-// restoredState is the same as the running state but also has associated checkpoint
-// information that maybe need destroyed when the container is stopped and destroy is called.
-type restoredState struct {
-	imageDir string
-	c        *linuxContainer
-}
-
-func (r *restoredState) status() Status {
-	return Running
-}
-
-func (r *restoredState) transition(s containerState) error {
-	switch s.(type) {
-	case *stoppedState, *runningState:
-		return nil
-	}
-	return newStateTransitionError(r, s)
-}
-
-func (r *restoredState) destroy() error {
-	if _, err := os.Stat(filepath.Join(r.c.root, "checkpoint")); err != nil {
-		if !os.IsNotExist(err) {
-			return err
-		}
-	}
-	return destroy(r.c)
 }
 
 // loadedState is used whenever a container is restored, loaded, or setting additional
