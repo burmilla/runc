@@ -1,6 +1,6 @@
 .PHONY: all shell dbuild man \
-	    localtest localunittest localintegration \
-	    test unittest integration
+	    localtest localunittest \
+	    test unittest
 
 SOURCES := $(shell find . 2>&1 | grep -E '.*\.(c|h|go)$$')
 PREFIX := $(DESTDIR)/usr/local
@@ -79,10 +79,10 @@ runcimage:
 	docker build -t $(RUNC_IMAGE) .
 
 test:
-	make unittest integration rootlessintegration
+	make unittest
 
 localtest:
-	make localunittest localintegration localrootlessintegration
+	make localunittest
 
 unittest: runcimage
 	docker run -e TESTFLAGS -t --privileged --rm -v $(CURDIR):/go/src/$(PROJECT) $(RUNC_IMAGE) make localunittest
@@ -90,27 +90,11 @@ unittest: runcimage
 localunittest: all
 	go test -timeout 3m -tags "$(BUILDTAGS)" ${TESTFLAGS} -v $(allpackages)
 
-integration: runcimage
-	docker run -e TESTFLAGS -t --privileged --rm -v $(CURDIR):/go/src/$(PROJECT) $(RUNC_IMAGE) make localintegration
-
-localintegration: all
-	bats -t tests/integration${TESTFLAGS}
-
-rootlessintegration: runcimage
-	docker run -e TESTFLAGS -t --privileged --rm -v $(CURDIR):/go/src/$(PROJECT) --cap-drop=ALL -u rootless $(RUNC_IMAGE) make localintegration
-
-# FIXME: This should not be separate from rootlessintegration's method of running.
-localrootlessintegration: all
-	sudo -u rootless -H PATH="${PATH}" bats -t tests/integration${TESTFLAGS}
-
 shell: all
 	docker run -e TESTFLAGS -ti --privileged --rm -v $(CURDIR):/go/src/$(PROJECT) $(RUNC_IMAGE) bash
 
 install:
 	install -D -m0755 runc $(BINDIR)/runc
-
-install-bash:
-	install -D -m0644 contrib/completions/bash/runc $(PREFIX)/share/bash-completion/completions/runc
 
 install-man:
 	install -d -m 755 $(MAN_INSTALL_PATH)
@@ -118,9 +102,6 @@ install-man:
 
 uninstall:
 	rm -f $(BINDIR)/runc
-
-uninstall-bash:
-	rm -f $(PREFIX)/share/bash-completion/completions/runc
 
 uninstall-man:
 	rm -f $(addprefix $(MAN_INSTALL_PATH),$(MAN_PAGES_BASE))
