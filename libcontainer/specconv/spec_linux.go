@@ -1,3 +1,4 @@
+//go:build linux
 // +build linux
 
 // Package specconv implements conversion of specifications to libcontainer
@@ -40,7 +41,6 @@ type CreateOpts struct {
 	NoPivotRoot  bool
 	NoNewKeyring bool
 	Spec         *specs.Spec
-	Rootless     bool
 }
 
 // CreateLibcontainerConfig creates a new libcontainer configuration from a
@@ -71,7 +71,6 @@ func CreateLibcontainerConfig(opts *CreateOpts) (*configs.Config, error) {
 		Hostname:     spec.Hostname,
 		Labels:       append(labels, fmt.Sprintf("bundle=%s", cwd)),
 		NoNewKeyring: opts.NoNewKeyring,
-		Rootless:     opts.Rootless,
 	}
 
 	exists := false

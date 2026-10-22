@@ -44,9 +44,6 @@ type State struct {
 
 	// Platform specific fields below here
 
-	// Specifies if the container was started under the rootless mode.
-	Rootless bool `json:"rootless"`
-
 	// NamespacePaths are filepaths to the container's namespaces. Key is the namespace type
 	// with the value as the path.
 	NamespacePaths map[configs.NamespaceType]string `json:"namespace_paths"`
@@ -381,7 +378,6 @@ func (c *linuxContainer) newInitConfig(process *Process) *initConfig {
 		PassedFilesCount: len(process.ExtraFiles),
 		ContainerId:      c.ID(),
 		NoNewPrivileges:  c.config.NoNewPrivileges,
-		Rootless:         c.config.Rootless,
 		AppArmorProfile:  c.config.AppArmorProfile,
 		ProcessLabel:     c.config.ProcessLabel,
 		Rlimits:          c.config.Rlimits,
@@ -563,7 +559,6 @@ func (c *linuxContainer) currentState() (*State, error) {
 			InitProcessStartTime: startTime,
 			Created:              c.created,
 		},
-		Rootless:            c.config.Rootless,
 		NamespacePaths:      make(map[configs.NamespaceType]string),
 		ExternalDescriptors: externalDescriptors,
 	}
@@ -682,19 +677,16 @@ func (c *linuxContainer) bootstrapData(cloneFlags uintptr, nsMaps map[configs.Na
 				Type:  GidmapAttr,
 				Value: b,
 			})
-			// The following only applies if we are root.
-			if !c.config.Rootless {
-				// check if we have CAP_SETGID to setgroup properly
-				pid, err := capability.NewPid(os.Getpid())
-				if err != nil {
-					return nil, err
-				}
-				if !pid.Get(capability.EFFECTIVE, capability.CAP_SETGID) {
-					r.AddData(&Boolmsg{
-						Type:  SetgroupAttr,
-						Value: true,
-					})
-				}
+			// check if we have CAP_SETGID to setgroup properly
+			pid, err := capability.NewPid(os.Getpid())
+			if err != nil {
+				return nil, err
+			}
+			if !pid.Get(capability.EFFECTIVE, capability.CAP_SETGID) {
+				r.AddData(&Boolmsg{
+					Type:  SetgroupAttr,
+					Value: true,
+				})
 			}
 		}
 	}
@@ -703,12 +695,6 @@ func (c *linuxContainer) bootstrapData(cloneFlags uintptr, nsMaps map[configs.Na
 	r.AddData(&Bytemsg{
 		Type:  OomScoreAdjAttr,
 		Value: []byte(fmt.Sprintf("%d", c.config.OomScoreAdj)),
-	})
-
-	// write rootless
-	r.AddData(&Boolmsg{
-		Type:  RootlessAttr,
-		Value: c.config.Rootless,
 	})
 
 	return bytes.NewReader(r.Serialize()), nil

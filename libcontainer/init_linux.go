@@ -1,3 +1,4 @@
+//go:build linux
 // +build linux
 
 package libcontainer
@@ -55,7 +56,6 @@ type initConfig struct {
 	ContainerId      string                `json:"containerid"`
 	Rlimits          []configs.Rlimit      `json:"rlimits"`
 	CreateConsole    bool                  `json:"create_console"`
-	Rootless         bool                  `json:"rootless"`
 }
 
 type initer interface {
@@ -255,38 +255,15 @@ func setupUser(config *initConfig) error {
 		}
 	}
 
-	if config.Rootless {
-		if execUser.Uid != 0 {
-			return fmt.Errorf("cannot run as a non-root user in a rootless container")
-		}
-
-		if execUser.Gid != 0 {
-			return fmt.Errorf("cannot run as a non-root group in a rootless container")
-		}
-
-		// We cannot set any additional groups in a rootless container and thus we
-		// bail if the user asked us to do so. TODO: We currently can't do this
-		// earlier, but if libcontainer.Process.User was typesafe this might work.
-		if len(addGroups) > 0 {
-			return fmt.Errorf("cannot set any additional groups in a rootless container")
-		}
-	}
-
 	// before we change to the container's user make sure that the processes STDIO
 	// is correctly owned by the user that we are switching to.
 	if err := fixStdioPermissions(config, execUser); err != nil {
 		return err
 	}
 
-	// This isn't allowed in an unprivileged user namespace since Linux 3.19.
-	// There's nothing we can do about /etc/group entries, so we silently
-	// ignore setting groups here (since the user didn't explicitly ask us to
-	// set the group).
-	if !config.Rootless {
-		suppGroups := append(execUser.Sgids, addGroups...)
-		if err := syscall.Setgroups(suppGroups); err != nil {
-			return err
-		}
+	suppGroups := append(execUser.Sgids, addGroups...)
+	if err := syscall.Setgroups(suppGroups); err != nil {
+		return err
 	}
 
 	if err := system.Setgid(execUser.Gid); err != nil {
@@ -404,4 +381,3 @@ func setupRlimits(limits []configs.Rlimit, pid int) error {
 	}
 	return nil
 }
-
