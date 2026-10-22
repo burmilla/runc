@@ -60,20 +60,6 @@ func TestGetContainerPids(t *testing.T) {
 	}
 }
 
-func TestGetContainerStats(t *testing.T) {
-	container := &linuxContainer{
-		id:     "myid",
-		config: &configs.Config{},
-	}
-	stats, err := container.Stats()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(stats.Interfaces) != 0 {
-		t.Fatalf("expected no network interfaces but received %v", stats.Interfaces)
-	}
-}
-
 func TestGetContainerState(t *testing.T) {
 	var (
 		pid                 = os.Getpid()

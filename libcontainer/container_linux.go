@@ -113,23 +113,6 @@ func (c *linuxContainer) Processes() ([]int, error) {
 	return []int{}, nil
 }
 
-func (c *linuxContainer) Stats() (*Stats, error) {
-	var (
-		stats = &Stats{}
-	)
-	for _, iface := range c.config.Networks {
-		switch iface.Type {
-		case "veth":
-			istats, err := getNetworkInterfaceStats(iface.HostInterfaceName)
-			if err != nil {
-				return stats, newSystemErrorWithCausef(err, "getting network stats for interface %q", iface.HostInterfaceName)
-			}
-			stats.Interfaces = append(stats.Interfaces, istats)
-		}
-	}
-	return stats, nil
-}
-
 func (c *linuxContainer) Set(config configs.Config) error {
 	return nil
 }

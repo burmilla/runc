@@ -98,13 +98,6 @@ type BaseContainer interface {
 	// the Container state is PAUSED in which case every PID in the slice is valid.
 	Processes() ([]int, error)
 
-	// Returns statistics for the container.
-	//
-	// errors:
-	// ContainerNotExists - Container no longer exists,
-	// Systemerror - System error.
-	Stats() (*Stats, error)
-
 	// Set resources of container as configured
 	//
 	// We can use this to change resources when containers are running.

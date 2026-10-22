@@ -38,7 +38,7 @@ The root filesystem contains the contents of the container.
 
 To start a new instance of a container:
 
-    # runc run [ -b bundle ] <container-id>
+    # runc create [ -b bundle ] <container-id> && runc start <container-id>
 
 Where "<container-id>" is your name for the instance of the container that you
 are starting. The name you provide for the container instance must be unique on
@@ -84,16 +84,12 @@ func main() {
 	app.Commands = []cli.Command{
 		createCommand,
 		deleteCommand,
-		eventsCommand,
 		execCommand,
 		initCommand,
 		killCommand,
-		listCommand,
 		pauseCommand,
 		psCommand,
 		resumeCommand,
-		runCommand,
-		specCommand,
 		startCommand,
 		stateCommand,
 	}

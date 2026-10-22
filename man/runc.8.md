@@ -29,19 +29,14 @@ value for "bundle" is the current directory.
 
 # COMMANDS
    delete       delete any resources held by the container often used with detached containers
-   events       display container events such as OOM notifications, cpu, memory, IO and network stats
    exec         execute new process inside the container
    init         initialize the namespaces and launch the process (do not call it outside of runc)
    kill         kill sends the specified signal (default: SIGTERM) to the container's init process
-   list         lists containers started by runc with the given root
    pause        pause suspends all processes inside the container
    ps           displays the processes running inside a container
    resume       resumes all processes that have been previously paused
-   run          create and run a container
-   spec         create a new specification file
    start        executes the user defined process in a created container
    state        output the state of a container
-   update       update container resource constraints
    help, h      Shows a list of commands or help for one command
    
 # GLOBAL OPTIONS
