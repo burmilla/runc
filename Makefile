@@ -29,16 +29,10 @@ SHELL := $(shell command -v bash 2>/dev/null)
 runc: $(SOURCES)
 	go build -ldflags "-X main.gitCommit=${COMMIT} -X main.version=${VERSION}" -tags "$(BUILDTAGS)" -o runc .
 
-all: runc recvtty
-
-recvtty: contrib/cmd/recvtty/recvtty
-
-contrib/cmd/recvtty/recvtty: $(SOURCES)
-	go build -ldflags "-X main.gitCommit=${COMMIT} -X main.version=${VERSION}" -tags "$(BUILDTAGS)" -o contrib/cmd/recvtty/recvtty ./contrib/cmd/recvtty
+all: runc
 
 static: $(SOURCES)
 	CGO_ENABLED=1 go build -tags "$(BUILDTAGS) cgo static_build" -ldflags "-w -extldflags -static -X main.gitCommit=${COMMIT} -X main.version=${VERSION}" -o runc .
-	CGO_ENABLED=1 go build -tags "$(BUILDTAGS) cgo static_build" -ldflags "-w -extldflags -static -X main.gitCommit=${COMMIT} -X main.version=${VERSION}" -o contrib/cmd/recvtty/recvtty ./contrib/cmd/recvtty
 
 release:
 	@flag_list=(seccomp selinux apparmor static); \
@@ -108,7 +102,6 @@ uninstall-man:
 
 clean:
 	rm -f runc
-	rm -f contrib/cmd/recvtty/recvtty
 	rm -rf $(RELEASE_DIR)
 	rm -rf $(MAN_DIR)
 
