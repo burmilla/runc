@@ -48,7 +48,7 @@ command(s) that get executed on start, edit the args parameter of the spec. See
 		},
 		cli.IntFlag{
 			Name:  "preserve-fds",
-			Usage: "Pass N additional file descriptors to the container (stdio + $LISTEN_FDS + N in total)",
+			Usage: "Pass N additional file descriptors to the container (stdio + N in total)",
 		},
 	},
 	Action: func(context *cli.Context) error {

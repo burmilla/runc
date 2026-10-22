@@ -1,3 +1,4 @@
+//go:build linux
 // +build linux
 
 package main
@@ -17,9 +18,7 @@ const signalBufferSize = 2048
 
 // newSignalHandler returns a signal handler for processing SIGCHLD and SIGWINCH signals
 // while still forwarding all other signals to the process.
-// If notifySocket is present, use it to read systemd notifications from the container and
-// forward them to notifySocketHost.
-func newSignalHandler(enableSubreaper bool, notifySocket *notifySocket) *signalHandler {
+func newSignalHandler(enableSubreaper bool) *signalHandler {
 	if enableSubreaper {
 		// set us as the subreaper before registering the signal handler for the container
 		if err := system.SetSubreaper(1); err != nil {
@@ -32,8 +31,7 @@ func newSignalHandler(enableSubreaper bool, notifySocket *notifySocket) *signalH
 	// handle all signals for the process.
 	signal.Notify(s)
 	return &signalHandler{
-		signals:      s,
-		notifySocket: notifySocket,
+		signals: s,
 	}
 }
 
@@ -45,8 +43,7 @@ type exit struct {
 }
 
 type signalHandler struct {
-	signals      chan os.Signal
-	notifySocket *notifySocket
+	signals chan os.Signal
 }
 
 // forward handles the main signal event loop forwarding, resizing, or reaping depending
@@ -54,22 +51,13 @@ type signalHandler struct {
 func (h *signalHandler) forward(process *libcontainer.Process, tty *tty, detach bool) (int, error) {
 	// make sure we know the pid of our main process so that we can return
 	// after it dies.
-	if detach && h.notifySocket == nil {
+	if detach {
 		return 0, nil
 	}
 
 	pid1, err := process.Pid()
 	if err != nil {
 		return -1, err
-	}
-
-	if h.notifySocket != nil {
-		if detach {
-			h.notifySocket.run(pid1)
-			return 0, nil
-		} else {
-			go h.notifySocket.run(0)
-		}
 	}
 
 	// perform the initial tty resize.
@@ -93,9 +81,6 @@ func (h *signalHandler) forward(process *libcontainer.Process, tty *tty, detach 
 					// status because we must ensure that any of the go specific process
 					// fun such as flushing pipes are complete before we return.
 					process.Wait()
-					if h.notifySocket != nil {
-						h.notifySocket.Close()
-					}
 					return e.status, nil
 				}
 			}

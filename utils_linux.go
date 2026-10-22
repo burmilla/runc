@@ -1,3 +1,4 @@
+//go:build linux
 // +build linux
 
 package main
@@ -12,7 +13,6 @@ import (
 	"syscall"
 
 	"github.com/Sirupsen/logrus"
-	"github.com/coreos/go-systemd/activation"
 	"github.com/opencontainers/runc/libcontainer"
 	"github.com/opencontainers/runc/libcontainer/configs"
 	"github.com/opencontainers/runc/libcontainer/specconv"
@@ -204,13 +204,11 @@ type runner struct {
 	enableSubreaper bool
 	shouldDestroy   bool
 	detach          bool
-	listenFDs       []*os.File
 	preserveFDs     int
 	pidFile         string
 	consoleSocket   string
 	container       libcontainer.Container
 	create          bool
-	notifySocket    *notifySocket
 }
 
 func (r *runner) run(config *specs.Process) (int, error) {
@@ -222,10 +220,6 @@ func (r *runner) run(config *specs.Process) (int, error) {
 	if err != nil {
 		r.destroy()
 		return -1, err
-	}
-	if len(r.listenFDs) > 0 {
-		process.Env = append(process.Env, fmt.Sprintf("LISTEN_FDS=%d", len(r.listenFDs)), "LISTEN_PID=1")
-		process.ExtraFiles = append(process.ExtraFiles, r.listenFDs...)
 	}
 	baseFd := 3 + len(process.ExtraFiles)
 	for i := baseFd; i < baseFd+r.preserveFDs; i++ {
@@ -251,7 +245,7 @@ func (r *runner) run(config *specs.Process) (int, error) {
 	// Setting up IO is a two stage process. We need to modify process to deal
 	// with detaching containers, and then we get a tty after the container has
 	// started.
-	handler := newSignalHandler(r.enableSubreaper, r.notifySocket)
+	handler := newSignalHandler(r.enableSubreaper)
 	tty, err := setupIO(process, rootuid, rootgid, config.Terminal, detach, r.consoleSocket)
 	if err != nil {
 		r.destroy()
@@ -332,31 +326,15 @@ func startContainer(context *cli.Context, spec *specs.Spec, create bool) (int, e
 		return -1, errEmptyID
 	}
 
-	notifySocket := newNotifySocket(context, os.Getenv("NOTIFY_SOCKET"), id)
-	if notifySocket != nil {
-		notifySocket.setupSpec(context, spec)
-	}
-
 	container, err := createContainer(context, id, spec)
 	if err != nil {
 		return -1, err
 	}
 
-	if notifySocket != nil {
-		notifySocket.setupSocket()
-	}
-
-	// Support on-demand socket activation by passing file descriptors into the container init process.
-	listenFDs := []*os.File{}
-	if os.Getenv("LISTEN_FDS") != "" {
-		listenFDs = activation.Files(false)
-	}
 	r := &runner{
 		enableSubreaper: !context.Bool("no-subreaper"),
 		shouldDestroy:   true,
 		container:       container,
-		listenFDs:       listenFDs,
-		notifySocket:    notifySocket,
 		consoleSocket:   context.String("console-socket"),
 		detach:          context.Bool("detach"),
 		pidFile:         context.String("pid-file"),
