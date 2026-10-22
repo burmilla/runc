@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/opencontainers/runc/libcontainer/configs"
-	"github.com/opencontainers/runc/libcontainer/seccomp"
 	"github.com/opencontainers/runtime-spec/specs-go"
 )
 
@@ -108,11 +107,7 @@ func CreateLibcontainerConfig(opts *CreateOpts) (*configs.Config, error) {
 	config.MaskPaths = spec.Linux.MaskedPaths
 	config.ReadonlyPaths = spec.Linux.ReadonlyPaths
 	if spec.Linux.Seccomp != nil {
-		seccomp, err := setupSeccomp(spec.Linux.Seccomp)
-		if err != nil {
-			return nil, err
-		}
-		config.Seccomp = seccomp
+		return nil, fmt.Errorf("seccomp is not supported")
 	}
 	if spec.Process.SelinuxLabel != "" {
 		config.ProcessLabel = spec.Process.SelinuxLabel
@@ -370,73 +365,6 @@ func parseMountOptions(options []string) (int, []int, string, int) {
 		}
 	}
 	return flag, pgflag, strings.Join(data, ","), extFlags
-}
-
-func setupSeccomp(config *specs.LinuxSeccomp) (*configs.Seccomp, error) {
-	if config == nil {
-		return nil, nil
-	}
-
-	// No default action specified, no syscalls listed, assume seccomp disabled
-	if config.DefaultAction == "" && len(config.Syscalls) == 0 {
-		return nil, nil
-	}
-
-	newConfig := new(configs.Seccomp)
-	newConfig.Syscalls = []*configs.Syscall{}
-
-	if len(config.Architectures) > 0 {
-		newConfig.Architectures = []string{}
-		for _, arch := range config.Architectures {
-			newArch, err := seccomp.ConvertStringToArch(string(arch))
-			if err != nil {
-				return nil, err
-			}
-			newConfig.Architectures = append(newConfig.Architectures, newArch)
-		}
-	}
-
-	// Convert default action from string representation
-	newDefaultAction, err := seccomp.ConvertStringToAction(string(config.DefaultAction))
-	if err != nil {
-		return nil, err
-	}
-	newConfig.DefaultAction = newDefaultAction
-
-	// Loop through all syscall blocks and convert them to libcontainer format
-	for _, call := range config.Syscalls {
-		newAction, err := seccomp.ConvertStringToAction(string(call.Action))
-		if err != nil {
-			return nil, err
-		}
-
-		for _, name := range call.Names {
-			newCall := configs.Syscall{
-				Name:   name,
-				Action: newAction,
-				Args:   []*configs.Arg{},
-			}
-			// Loop through all the arguments of the syscall and convert them
-			for _, arg := range call.Args {
-				newOp, err := seccomp.ConvertStringToOperator(string(arg.Op))
-				if err != nil {
-					return nil, err
-				}
-
-				newArg := configs.Arg{
-					Index:    arg.Index,
-					Value:    arg.Value,
-					ValueTwo: arg.ValueTwo,
-					Op:       newOp,
-				}
-
-				newCall.Args = append(newCall.Args, &newArg)
-			}
-			newConfig.Syscalls = append(newConfig.Syscalls, &newCall)
-		}
-	}
-
-	return newConfig, nil
 }
 
 func createHooks(rspec *specs.Spec, config *configs.Config) {

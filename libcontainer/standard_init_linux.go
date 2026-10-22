@@ -11,7 +11,6 @@ import (
 	"github.com/opencontainers/runc/libcontainer/apparmor"
 	"github.com/opencontainers/runc/libcontainer/configs"
 	"github.com/opencontainers/runc/libcontainer/keys"
-	"github.com/opencontainers/runc/libcontainer/seccomp"
 	"github.com/opencontainers/runc/libcontainer/system"
 	"github.com/opencontainers/selinux/go-selinux/label"
 )
@@ -130,19 +129,9 @@ func (l *linuxStandardInit) Init() error {
 			return err
 		}
 	}
-	// Tell our parent that we're ready to Execv. This must be done before the
-	// Seccomp rules have been applied, because we need to be able to read and
-	// write to a socket.
+	// Tell our parent that we're ready to Execv.
 	if err := syncParentReady(l.pipe); err != nil {
 		return err
-	}
-	// Without NoNewPrivileges seccomp is a privileged operation, so we need to
-	// do this before dropping capabilities; otherwise do it as late as possible
-	// just before execve so as few syscalls take place after it as possible.
-	if l.config.Config.Seccomp != nil && !l.config.NoNewPrivileges {
-		if err := seccomp.InitSeccomp(l.config.Config.Seccomp); err != nil {
-			return err
-		}
 	}
 	if err := finalizeNamespace(l.config); err != nil {
 		return err
@@ -174,11 +163,6 @@ func (l *linuxStandardInit) Init() error {
 	}
 	if _, err := syscall.Write(fd, []byte("0")); err != nil {
 		return newSystemErrorWithCause(err, "write 0 exec fifo")
-	}
-	if l.config.Config.Seccomp != nil && l.config.NoNewPrivileges {
-		if err := seccomp.InitSeccomp(l.config.Config.Seccomp); err != nil {
-			return newSystemErrorWithCause(err, "init seccomp")
-		}
 	}
 	// close the statedir fd before exec because the kernel resets dumpable in the wrong order
 	// https://github.com/torvalds/linux/blob/v4.9/fs/exec.c#L1290-L1318

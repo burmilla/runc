@@ -9,7 +9,7 @@ GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null)
 GIT_BRANCH_CLEAN := $(shell echo $(GIT_BRANCH) | sed -e "s/[^[:alnum:]]/-/g")
 RUNC_IMAGE := runc_dev$(if $(GIT_BRANCH_CLEAN),:$(GIT_BRANCH_CLEAN))
 PROJECT := github.com/opencontainers/runc
-BUILDTAGS := seccomp
+BUILDTAGS :=
 COMMIT_NO := $(shell git rev-parse HEAD 2> /dev/null || true)
 COMMIT := $(if $(shell git status --porcelain --untracked-files=no),"${COMMIT_NO}-dirty","${COMMIT_NO}")
 
@@ -35,7 +35,7 @@ static: $(SOURCES)
 	CGO_ENABLED=1 go build -tags "$(BUILDTAGS) cgo static_build" -ldflags "-w -extldflags -static -X main.gitCommit=${COMMIT} -X main.version=${VERSION}" -o runc .
 
 release:
-	@flag_list=(seccomp selinux apparmor static); \
+	@flag_list=(selinux apparmor static); \
 	unset expression; \
 	for flag in "$${flag_list[@]}"; do \
 		expression+="' '{'',$${flag}}"; \
