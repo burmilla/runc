@@ -404,35 +404,15 @@ func (c *linuxContainer) Destroy() error {
 	return c.state.destroy()
 }
 
+// errPauseNotSupported is returned because freezing needs the cgroup freezer.
+var errPauseNotSupported = newGenericError(fmt.Errorf("pause is not supported: System Docker runs without cgroups"), SystemError)
+
 func (c *linuxContainer) Pause() error {
-	c.m.Lock()
-	defer c.m.Unlock()
-	status, err := c.currentStatus()
-	if err != nil {
-		return err
-	}
-	switch status {
-	case Running, Created:
-		return c.state.transition(&pausedState{
-			c: c,
-		})
-	}
-	return newGenericError(fmt.Errorf("container not running or created: %s", status), ContainerNotRunning)
+	return errPauseNotSupported
 }
 
 func (c *linuxContainer) Resume() error {
-	c.m.Lock()
-	defer c.m.Unlock()
-	status, err := c.currentStatus()
-	if err != nil {
-		return err
-	}
-	if status != Paused {
-		return newGenericError(fmt.Errorf("container not paused"), ContainerNotPaused)
-	}
-	return c.state.transition(&runningState{
-		c: c,
-	})
+	return errPauseNotSupported
 }
 
 func (c *linuxContainer) updateState(process parentProcess) (*State, error) {
