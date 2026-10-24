@@ -1,7 +1,8 @@
-package specs
+package configs
 
-// State holds information about the runtime state of the container.
-type State struct {
+// HookState is the payload provided to a hook on execution. It mirrors the
+// OCI runtime-spec State document; libnetwork's setkey hook only reads Pid.
+type HookState struct {
 	// Version is the version of the specification that is supported.
 	Version string `json:"ociVersion"`
 	// ID is the container ID
